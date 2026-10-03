@@ -1,106 +1,159 @@
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Alerta Temprana — Propuesta 1</title>
-  <style>
-    :root{font-family:Inter,system-ui,sans-serif;color:#16324f;background:#f4f8fb}
-    *{box-sizing:border-box} body{margin:0}.wrap{max-width:1200px;margin:auto;padding:24px}
-    header{background:linear-gradient(135deg,#0b6e99,#1ba39c);color:white;border-radius:20px;padding:28px;margin-bottom:18px}
-    header h1{margin:0 0 6px}.small{font-size:13px;opacity:.9}
-    .toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}.toolbar input,.toolbar button{padding:10px 12px;border-radius:10px;border:1px solid #cdd9e2}.toolbar button{background:#16324f;color:#fff;border:none;cursor:pointer}
-    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.grid2{display:grid;grid-template-columns:1.2fr .8fr;gap:14px;margin-top:14px}
-    .card{background:white;border-radius:16px;padding:18px;box-shadow:0 4px 18px #0001}.value{font-size:28px;font-weight:800}.muted{color:#60748a;font-size:13px}
-    table{width:100%;border-collapse:collapse;margin-top:10px}th,td{text-align:left;padding:9px;border-bottom:1px solid #e8eef3;font-size:14px}
-    .badge{padding:4px 8px;border-radius:999px;font-weight:700;font-size:12px;background:#e8eef3}.danger{background:#ffe1e1;color:#a11}.warn{background:#fff2cc;color:#7a5500}.ok{background:#dff7e7;color:#137a42}
-    .news{display:grid;gap:10px}.news a{color:#0b6e99;text-decoration:none;font-weight:700}.news-item{padding:12px;border:1px solid #e8eef3;border-radius:12px}.meta{font-size:12px;color:#708090;margin-top:5px}
-    .api-pill{display:inline-block;padding:5px 9px;border-radius:999px;background:#eef7ff;font-size:12px;margin:2px}
-    @media(max-width:950px){.grid{grid-template-columns:repeat(2,1fr)}.grid2{grid-template-columns:1fr}}@media(max-width:600px){.grid{grid-template-columns:1fr}.wrap{padding:14px}}
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Climate Alert Platform | Propuesta 1</title>
+<style>
+:root{--bg:#f3f7fa;--card:#fff;--text:#17324d;--muted:#647789;--primary:#0b6e99;--secondary:#1ba39c;--line:#e2eaf0}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:var(--bg);color:var(--text)}
+.wrap{max-width:1250px;margin:auto;padding:22px}
+.hero{color:#fff;background:linear-gradient(135deg,var(--primary),var(--secondary));border-radius:24px;padding:30px;box-shadow:0 10px 30px #0b6e9925}
+.hero h1{margin:0 0 8px;font-size:34px}.hero p{margin:0;opacity:.92}.toolbar{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
+input,button{border:0;border-radius:11px;padding:11px 13px;font-size:14px}input{background:#ffffffea;color:#17324d;min-width:115px}#api{flex:1;min-width:300px}button{background:#17324d;color:#fff;cursor:pointer;font-weight:700}
+.live{display:inline-flex;align-items:center;gap:8px;margin-top:14px;font-size:13px}.dot{width:9px;height:9px;border-radius:50%;background:#9fffc0;box-shadow:0 0 0 4px #ffffff22}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:16px}.grid2{display:grid;grid-template-columns:1.1fr .9fr;gap:14px;margin-top:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:19px;box-shadow:0 6px 20px #17324d0a}.label{color:var(--muted);font-size:13px}.value{font-size:28px;font-weight:800;margin-top:7px}.source{color:var(--muted);font-size:12px;margin-top:5px}
+h2{margin:0 0 10px;font-size:21px}.status{padding:10px 12px;border-radius:12px;background:#eef7fb;color:#426277;font-size:13px}
+table{width:100%;border-collapse:collapse;margin-top:10px}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);font-size:13px}
+.news{display:grid;gap:10px}.news-item{border:1px solid var(--line);border-radius:13px;padding:13px}.news-item a{color:var(--primary);text-decoration:none;font-weight:750}.meta{margin-top:5px;color:var(--muted);font-size:12px}
+.pills{display:flex;flex-wrap:wrap;gap:7px;margin:13px 0}.pill{padding:6px 9px;background:#edf7ff;color:#24516d;border-radius:999px;font-size:12px}
+.badge{display:inline-block;padding:4px 8px;border-radius:999px;font-weight:800;font-size:11px}.ok{background:#dff7e7;color:#15723e}.warn{background:#fff1c9;color:#785300}.danger{background:#ffe0e0;color:#a01818}
+footer{color:var(--muted);font-size:12px;padding:18px 3px}
+@media(max-width:950px){.grid{grid-template-columns:repeat(2,1fr)}.grid2{grid-template-columns:1fr}}@media(max-width:600px){.grid{grid-template-columns:1fr}.wrap{padding:12px}.hero h1{font-size:27px}#api{min-width:100%}}
+</style>
 </head>
 <body>
 <div class="wrap">
-  <header>
-    <h1>Plataforma de Alerta Temprana</h1>
-    <div>Propuesta 1 · lluvias extremas e inundaciones asociadas al Fenómeno de El Niño</div>
-    <div class="toolbar">
-      <input id="api" value="https://TU_API.execute-api.TU_REGION.amazonaws.com" style="min-width:330px;flex:2" placeholder="URL de API Gateway">
-      <input id="lat" value="-5.1945" placeholder="Latitud" style="max-width:120px">
-      <input id="lon" value="-80.6328" placeholder="Longitud" style="max-width:120px">
-      <button onclick="loadAll()">Actualizar</button>
-    </div>
-    <div class="small" style="margin-top:10px">La interfaz consulta las APIs cada 60 segundos. Las fuentes externas determinan la frecuencia real de actualización de sus datos.</div>
-  </header>
+<section class="hero">
+  <h1>🌧️ Climate Alert Platform</h1>
+  <p>Plataforma web de alerta temprana para lluvias extremas e inundaciones · Propuesta 1</p>
+  <div class="toolbar">
+    <input id="lat" value="-5.1945" aria-label="Latitud" placeholder="Latitud">
+    <input id="lon" value="-80.6328" aria-label="Longitud" placeholder="Longitud">
+    <input id="api" value="" aria-label="API Gateway opcional" placeholder="API Gateway URL (opcional)">
+    <button onclick="refreshAll()">Actualizar ahora</button>
+  </div>
+  <div class="live"><span class="dot"></span> Datos externos consultados en vivo · interfaz actualizada cada 60 segundos</div>
+</section>
 
-  <section class="grid">
-    <div class="card"><div class="muted">Temperatura actual (API)</div><div class="value" id="temp">—</div><div class="small" id="weatherSource"></div></div>
-    <div class="card"><div class="muted">Lluvia actual (API)</div><div class="value" id="rain">—</div><div class="small">Open-Meteo</div></div>
-    <div class="card"><div class="muted">Caudal estimado (API)</div><div class="value" id="river">—</div><div class="small">Open-Meteo Flood / GloFAS</div></div>
-    <div class="card"><div class="muted">Noticias recientes</div><div class="value" id="newsCount">—</div><div class="small">GDELT</div></div>
-  </section>
+<section class="grid">
+  <div class="card"><div class="label">Temperatura</div><div id="temp" class="value">—</div><div class="source">Open-Meteo Weather API</div></div>
+  <div class="card"><div class="label">Lluvia actual</div><div id="rain" class="value">—</div><div class="source">Open-Meteo Weather API</div></div>
+  <div class="card"><div class="label">Caudal fluvial</div><div id="river" class="value">—</div><div class="source">Open-Meteo Flood API / GloFAS</div></div>
+  <div class="card"><div class="label">Noticias recientes</div><div id="newsCount" class="value">—</div><div class="source">GDELT DOC 2.0</div></div>
+</section>
 
-  <div class="grid2">
-    <div class="card">
-      <h2>Estado ambiental</h2>
-      <div id="status" class="muted">Configura la URL de API Gateway.</div>
-      <div style="margin:12px 0">
-        <span class="api-pill">API Gateway</span><span class="api-pill">AWS Lambda</span><span class="api-pill">DynamoDB</span><span class="api-pill">Open-Meteo</span><span class="api-pill">GloFAS</span><span class="api-pill">GDELT</span>
-      </div>
-      <table><tbody>
-        <tr><th>Precipitación</th><td id="precip">—</td></tr>
-        <tr><th>Humedad</th><td id="humidity">—</td></tr>
-        <tr><th>Viento</th><td id="wind">—</td></tr>
-        <tr><th>Caudal máximo 7 días</th><td id="riverMax">—</td></tr>
-        <tr><th>Última consulta</th><td id="updated">—</td></tr>
-      </tbody></table>
+<section class="grid2">
+  <div class="card">
+    <h2>📊 Monitoreo ambiental</h2>
+    <div id="status" class="status">Cargando APIs…</div>
+    <div class="pills">
+      <span class="pill">Open-Meteo</span><span class="pill">GloFAS</span><span class="pill">GDELT</span><span class="pill">API Gateway</span><span class="pill">AWS Lambda</span><span class="pill">DynamoDB</span>
     </div>
-
-    <div class="card">
-      <h2>Últimas mediciones registradas</h2>
-      <div id="measurementStatus" class="muted">—</div>
-      <table><thead><tr><th>Estación</th><th>Lluvia</th><th>Río</th><th>Riesgo</th></tr></thead><tbody id="rows"></tbody></table>
-    </div>
+    <table>
+      <tr><th>Precipitación</th><td id="precip">—</td></tr>
+      <tr><th>Humedad</th><td id="humidity">—</td></tr>
+      <tr><th>Viento</th><td id="wind">—</td></tr>
+      <tr><th>Caudal máximo (7 días)</th><td id="riverMax">—</td></tr>
+      <tr><th>Última actualización</th><td id="updated">—</td></tr>
+    </table>
   </div>
 
-  <section class="card" style="margin-top:14px">
-    <h2>📰 Noticias de riesgo y emergencias</h2>
-    <div class="muted" style="margin-bottom:10px">Consulta API cada minuto · Fuente: GDELT DOC 2.0 (ventana reciente).</div>
-    <div id="news" class="news"><div class="muted">Sin datos todavía.</div></div>
-  </section>
+  <div class="card">
+    <h2>🚨 Estado del sistema</h2>
+    <div id="backend" class="status">El backend AWS aún no está conectado.</div>
+    <div style="margin-top:13px">
+      <div class="label">Nivel de riesgo calculado por el MVP</div>
+      <div id="risk" class="value">—</div>
+      <div id="riskReason" class="source">Se muestra como referencia demostrativa; los umbrales deben calibrarse antes de un uso operativo.</div>
+    </div>
+  </div>
+</section>
+
+<section class="card" style="margin-top:14px">
+  <h2>📰 Noticias de riesgo y emergencias</h2>
+  <div class="label" style="margin-bottom:10px">Búsqueda: Perú · lluvias · inundaciones · El Niño</div>
+  <div id="news" class="news"><div class="label">Cargando noticias…</div></div>
+</section>
+
+<section class="card" style="margin-top:14px">
+  <h2>🗄️ Medición registrada en AWS</h2>
+  <div id="measurements" class="status">Conecta la URL de API Gateway para ver las mediciones guardadas en DynamoDB.</div>
+  <table><thead><tr><th>Estación</th><th>Lluvia mm/h</th><th>Nivel de río m</th><th>Riesgo</th></tr></thead><tbody id="rows"></tbody></table>
+</section>
+
+<footer>Proyecto académico de Computación en la Nube · Propuesta 1 · Las APIs externas determinan la disponibilidad y frecuencia real de actualización de sus fuentes.</footer>
 </div>
+
 <script>
-function apiUrl(){return document.querySelector('#api').value.replace(/\/$/,'')}
-function val(id){return document.querySelector('#'+id)}
-function setRisk(level){const cls=level==='CRITICO'||level==='ALTO'?'danger':level==='MEDIO'?'warn':'ok';return `<span class="badge ${cls}">${level}</span>`}
-async function get(path){const r=await fetch(apiUrl()+path);if(!r.ok)throw new Error(`${path}: HTTP ${r.status}`);return r.json()}
-async function loadAll(){
-  if(apiUrl().includes('TU_API')){val('status').textContent='Configura la URL de API Gateway.';return}
-  const lat=encodeURIComponent(val('lat').value), lon=encodeURIComponent(val('lon').value)
-  try{
-    const [w,f,n,m]=await Promise.all([
-      get(`/weather?lat=${lat}&lon=${lon}`), get(`/flood?lat=${lat}&lon=${lon}`), get('/news'), get('/measurements')
-    ])
-    const c=w.current||{}, d=f.daily||{}
-    val('temp').textContent = c.temperature_2m!=null ? `${c.temperature_2m} °C` : '—'
-    val('rain').textContent = c.rain!=null ? `${c.rain} mm` : '—'
-    val('precip').textContent = c.precipitation!=null ? `${c.precipitation} mm` : '—'
-    val('humidity').textContent = c.relative_humidity_2m!=null ? `${c.relative_humidity_2m} %` : '—'
-    val('wind').textContent = c.wind_speed_10m!=null ? `${c.wind_speed_10m} km/h` : '—'
-    const dis=d.river_discharge||[]
-    val('river').textContent = dis.length ? `${dis[0]} m³/s` : '—'
-    val('riverMax').textContent = (d.river_discharge_max||[]).length ? `${Math.max(...d.river_discharge_max)} m³/s` : '—'
-    val('weatherSource').textContent='Fuente: Open-Meteo API'
-    val('newsCount').textContent=(n.articles||[]).length
-    val('updated').textContent=new Date().toLocaleString('es-PE')
-    val('status').textContent='APIs consultadas correctamente.'
-    const items=m.items||[]
-    val('measurementStatus').textContent=`${items.length} mediciones cargadas desde AWS/DynamoDB`
-    val('rows').innerHTML=items.slice(0,12).map(x=>`<tr><td>${x.station_id||'—'}</td><td>${x.rain_mm_h??'—'}</td><td>${x.river_level_m??'—'}</td><td>${setRisk(x.risk_level||'—')}</td></tr>`).join('')
-    val('news').innerHTML=(n.articles||[]).slice(0,12).map(a=>`<div class="news-item"><a href="${a.url}" target="_blank" rel="noopener">${a.title||'Sin título'}</a><div class="meta">${a.domain||'fuente desconocida'} · ${a.seendate||''}</div></div>`).join('') || '<div class="muted">No hubo noticias en la ventana consultada.</div>'
-  }catch(e){val('status').textContent='Error al consultar APIs: '+e.message;console.error(e)}
+const $=id=>document.getElementById(id);
+const api=()=>($('api').value||'').replace(/\/$/,'');
+const q=async(url)=>{const r=await fetch(url);if(!r.ok)throw new Error('HTTP '+r.status);return r.json()};
+
+function riskBadge(level){
+  const cls=level==='CRITICO'||level==='ALTO'?'danger':level==='MEDIO'?'warn':'ok';
+  return '<span class="badge '+cls+'">'+level+'</span>';
 }
-loadAll(); setInterval(loadAll,60000)
+
+function localRisk(rain,river){
+  if(rain>=50||river>=5)return {level:'CRITICO',reason:'Se alcanzó un umbral crítico del MVP.'};
+  if(rain>=35||river>=4)return {level:'ALTO',reason:'Se alcanzó un umbral alto del MVP.'};
+  if(rain>=20||river>=3)return {level:'MEDIO',reason:'Se alcanzó un umbral de atención del MVP.'};
+  return {level:'BAJO',reason:'No se alcanzaron umbrales de atención del MVP.'};
+}
+
+async function loadDirectAPIs(){
+  const lat=encodeURIComponent($('lat').value),lon=encodeURIComponent($('lon').value);
+  const weatherUrl='https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,relative_humidity_2m,precipitation,rain,wind_speed_10m&forecast_days=1&timezone=UTC';
+  const floodUrl='https://flood-api.open-meteo.com/v1/flood?latitude='+lat+'&longitude='+lon+'&daily=river_discharge,river_discharge_max&forecast_days=7&timezone=UTC';
+  const newsUrl='https://api.gdeltproject.org/api/v2/doc/doc?query=Peru%20inundaci%C3%B3n%20lluvias%20El%20Ni%C3%B1o&mode=ArtList&format=json&maxrecords=12&sort=HybridRel&timespan=15min&sourcelang=Spanish';
+  const [w,f,n]=await Promise.all([q(weatherUrl),q(floodUrl),q(newsUrl)]);
+  const c=w.current||{},d=f.daily||{};
+  $('temp').textContent=c.temperature_2m!=null?c.temperature_2m+' °C':'—';
+  $('rain').textContent=c.rain!=null?c.rain+' mm':'—';
+  $('precip').textContent=c.precipitation!=null?c.precipitation+' mm':'—';
+  $('humidity').textContent=c.relative_humidity_2m!=null?c.relative_humidity_2m+' %':'—';
+  $('wind').textContent=c.wind_speed_10m!=null?c.wind_speed_10m+' km/h':'—';
+  const discharge=d.river_discharge||[];
+  const maxs=d.river_discharge_max||[];
+  $('river').textContent=discharge.length?discharge[0]+' m³/s':'—';
+  $('riverMax').textContent=maxs.length?Math.max(...maxs)+' m³/s':'—';
+  const rv=localRisk(Number(c.rain||0),Number(discharge[0]||0));
+  $('risk').innerHTML=riskBadge(rv.level);
+  $('riskReason').textContent=rv.reason;
+  const articles=n.articles||[];
+  $('newsCount').textContent=articles.length;
+  $('news').innerHTML=articles.map(a=>'<div class="news-item"><a href="'+a.url+'" target="_blank" rel="noopener">'+(a.title||'Sin título')+'</a><div class="meta">'+(a.domain||'fuente')+' · '+(a.seendate||'')+'</div></div>').join('')||'<div class="label">No se encontraron noticias en la ventana reciente.</div>';
+}
+
+async function loadAWS(){
+  if(!api()){ $('backend').textContent='Modo web directo activo: Weather, Flood y News se consultan mediante APIs públicas. El backend AWS se conecta al colocar su URL de API Gateway.'; return; }
+  try{
+    const [m,a]=await Promise.all([q(api()+'/measurements'),q(api()+'/alerts')]);
+    $('backend').textContent='Backend AWS conectado: API Gateway + Lambda + DynamoDB.';
+    const items=m.items||[];
+    $('measurements').textContent=items.length+' mediciones recibidas desde DynamoDB.';
+    $('rows').innerHTML=items.slice(0,10).map(x=>'<tr><td>'+(x.station_id||'—')+'</td><td>'+((x.rain_mm_h??'—'))+'</td><td>'+((x.river_level_m??'—'))+'</td><td>'+riskBadge(x.risk_level||'—')+'</td></tr>').join('');
+    if(!items.length)$('rows').innerHTML='';
+  }catch(e){
+    $('backend').textContent='No se pudo conectar con API Gateway: '+e.message;
+  }
+}
+
+async function refreshAll(){
+  $('status').textContent='Consultando APIs externas…';
+  try{
+    await loadDirectAPIs();
+    $('updated').textContent=new Date().toLocaleString('es-PE');
+    $('status').textContent='APIs externas consultadas correctamente.';
+  }catch(e){
+    $('status').textContent='Error al consultar APIs externas: '+e.message;
+  }
+  await loadAWS();
+}
+refreshAll();
+setInterval(refreshAll,60000);
 </script>
 </body>
 </html>
