@@ -31,7 +31,7 @@ footer{color:var(--muted);font-size:12px;padding:18px 3px}
   <div class="toolbar">
     <input id="lat" value="-5.1945" aria-label="Latitud" placeholder="Latitud">
     <input id="lon" value="-80.6328" aria-label="Longitud" placeholder="Longitud">
-    <input id="api" value="" aria-label="API Gateway opcional" placeholder="API Gateway URL (opcional)">
+    <input id="api" value="https://climate-alert-platform-api.onrender.com" aria-label="URL del backend" placeholder="URL del backend API">
     <button onclick="refreshAll()">Actualizar ahora</button>
   </div>
   <div class="live"><span class="dot"></span> Datos externos consultados en vivo · interfaz actualizada cada 60 segundos</div>
@@ -105,10 +105,20 @@ function localRisk(rain,river){
 
 async function loadDirectAPIs(){
   const lat=encodeURIComponent($('lat').value),lon=encodeURIComponent($('lon').value);
-  const weatherUrl='https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,relative_humidity_2m,precipitation,rain,wind_speed_10m&forecast_days=1&timezone=UTC';
-  const floodUrl='https://flood-api.open-meteo.com/v1/flood?latitude='+lat+'&longitude='+lon+'&daily=river_discharge,river_discharge_max&forecast_days=7&timezone=UTC';
-  const newsUrl='https://api.gdeltproject.org/api/v2/doc/doc?query=Peru%20inundaci%C3%B3n%20lluvias%20El%20Ni%C3%B1o&mode=ArtList&format=json&maxrecords=12&sort=HybridRel&timespan=15min&sourcelang=Spanish';
-  const [w,f,n]=await Promise.all([q(weatherUrl),q(floodUrl),q(newsUrl)]);
+  const base=api();
+  let w,f,n;
+  if(base){
+    [w,f,n]=await Promise.all([
+      q(base+'/weather?lat='+lat+'&lon='+lon),
+      q(base+'/flood?lat='+lat+'&lon='+lon),
+      q(base+'/news')
+    ]);
+  } else {
+    const weatherUrl='https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,relative_humidity_2m,precipitation,rain,wind_speed_10m&forecast_days=1&timezone=UTC';
+    const floodUrl='https://flood-api.open-meteo.com/v1/flood?latitude='+lat+'&longitude='+lon+'&daily=river_discharge,river_discharge_max&forecast_days=7&timezone=UTC';
+    const newsUrl='https://api.gdeltproject.org/api/v2/doc/doc?query=Peru%20inundaci%C3%B3n%20lluvias%20El%20Ni%C3%B1o&mode=ArtList&format=json&maxrecords=12&sort=HybridRel&timespan=15min&sourcelang=Spanish';
+    [w,f,n]=await Promise.all([q(weatherUrl),q(floodUrl),q(newsUrl)]);
+  }
   const c=w.current||{},d=f.daily||{};
   $('temp').textContent=c.temperature_2m!=null?c.temperature_2m+' °C':'—';
   $('rain').textContent=c.rain!=null?c.rain+' mm':'—';
@@ -124,7 +134,7 @@ async function loadDirectAPIs(){
   $('riskReason').textContent=rv.reason;
   const articles=n.articles||[];
   $('newsCount').textContent=articles.length;
-  $('news').innerHTML=articles.map(a=>'<div class="news-item"><a href="'+a.url+'" target="_blank" rel="noopener">'+(a.title||'Sin título')+'</a><div class="meta">'+(a.domain||'fuente')+' · '+(a.seendate||'')+'</div></div>').join('')||'<div class="label">No se encontraron noticias en la ventana reciente.</div>';
+  $('news').innerHTML=articles.map(a=>'<div class="news-item"><a href="'+a.url+'" target="_blank" rel="noopener">'+(a.title||'Sin título')+'</a><div class="meta">'+(a.domain||a.source?.title||'fuente')+' · '+(a.seendate||a.publishedAt||'')+'</div></div>').join('')||'<div class="label">No se encontraron noticias en la ventana reciente.</div>';
 }
 
 async function loadAWS(){
