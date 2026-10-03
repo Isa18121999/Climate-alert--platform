@@ -12,6 +12,9 @@ Globals:
         MEASUREMENTS_TABLE: !Ref MeasurementsTable
         ALERTS_TABLE: !Ref AlertsTable
         SNS_TOPIC_ARN: !Ref AlertTopic
+        DEFAULT_LAT: "-5.1945"
+        DEFAULT_LON: "-80.6328"
+        DEFAULT_STATION_ID: "PIURA-001"
 
 Resources:
   Api:
@@ -75,6 +78,18 @@ Resources:
           Properties:
             ApiId: !Ref Api
             Path: /news
+            Method: GET
+        OfficialAlerts:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /official-alerts
+            Method: GET
+        Health:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /health
             Method: GET
 
   MeasurementsTable:
