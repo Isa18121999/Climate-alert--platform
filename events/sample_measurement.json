@@ -1,0 +1,10 @@
+{
+  "station_id": "EST-001",
+  "timestamp": "2026-10-03T15:00:00Z",
+  "rain_mm_h": 52.4,
+  "river_level_m": 4.8,
+  "location": {
+    "lat": -12.0464,
+    "lon": -77.0428
+  }
+}
