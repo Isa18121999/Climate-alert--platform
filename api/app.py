@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -8,15 +9,22 @@ import requests
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "src"))
+from senamhi import senamhi_alerts
+
 app = Flask(__name__)
 CORS(app)
 
 OPEN_METEO_FORECAST = os.getenv("OPEN_METEO_FORECAST", "https://api.open-meteo.com/v1/forecast")
 OPEN_METEO_FLOOD = os.getenv("OPEN_METEO_FLOOD", "https://flood-api.open-meteo.com/v1/flood")
 GDELT_DOC = os.getenv("GDELT_DOC", "https://api.gdeltproject.org/api/v2/doc/doc")
+DEFAULT_LAT = float(os.getenv("DEFAULT_LAT", "-5.1945"))
+DEFAULT_LON = float(os.getenv("DEFAULT_LON", "-80.6328"))
+DEFAULT_STATION_ID = os.getenv("DEFAULT_STATION_ID", "PIURA-DEMO")
 
 measurements: list[dict] = []
 alerts: list[dict] = []
+official_alert_cache: list[dict] = []
 
 
 def get_json(url: str, params: dict, timeout: int = 10) -> dict:
@@ -57,7 +65,12 @@ def health():
 
 @app.get("/health")
 def health_check():
-    return jsonify({"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()})
+    return jsonify({
+        "status": "ok",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "provider": "Render",
+        "environment": "demo",
+    })
 
 
 @app.get("/weather")
@@ -128,6 +141,93 @@ def news():
     })
 
 
+
+
+@app.get("/official-alerts")
+def official_alerts_route():
+    global official_alert_cache
+    result = senamhi_alerts()
+    official_alert_cache = result.get("alerts", [])
+    return jsonify(result)
+
+
+@app.get("/monitor")
+def monitor():
+    lat = float(request.args.get("lat", DEFAULT_LAT))
+    lon = float(request.args.get("lon", DEFAULT_LON))
+    station_id = request.args.get("station_id", DEFAULT_STATION_ID)
+
+    weather_data = get_json(
+        OPEN_METEO_FORECAST,
+        {
+            "latitude": lat,
+            "longitude": lon,
+            "current": "temperature_2m,relative_humidity_2m,precipitation,rain,wind_speed_10m",
+            "forecast_days": 1,
+            "timezone": "UTC",
+        },
+    )
+    flood_data = get_json(
+        OPEN_METEO_FLOOD,
+        {
+            "latitude": lat,
+            "longitude": lon,
+            "daily": "river_discharge,river_discharge_max",
+            "forecast_days": 7,
+            "timezone": "UTC",
+        },
+    )
+
+    current = weather_data.get("current") or {}
+    daily = flood_data.get("daily") or {}
+    rain_mm_h = float(current.get("rain") or 0)
+    discharge = (daily.get("river_discharge") or [0])[0]
+    river_value = float(discharge or 0)
+    level, reasons = risk(rain_mm_h, river_value)
+
+    created = []
+    if level in {"ALTO", "CRITICO"}:
+        bucket = datetime.now(timezone.utc).strftime("%Y%m%d%H")
+        alert_id = f"risk-{station_id}-{bucket}"
+        if not any(x.get("id") == alert_id for x in alerts):
+            item = {
+                "id": alert_id,
+                "station_id": station_id,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "level": level,
+                "alert_type": "RIESGO_CALCULADO",
+                "official": False,
+                "source": "Climate Alert Platform",
+                "message": f"Riesgo {level}: {', '.join(reasons)}",
+                "rain_mm_h": rain_mm_h,
+                "river_level_m": river_value,
+                "location": {"lat": lat, "lon": lon},
+            }
+            alerts.insert(0, item)
+            created.append(item)
+
+    official = senamhi_alerts()
+    for item in official.get("alerts", []):
+        alert_id = f"official-{item['id']}"
+        if not any(x.get("id") == alert_id for x in alerts):
+            stored = {**item, "id": alert_id, "alert_type": item.get("type", "AVISO_OFICIAL")}
+            alerts.insert(0, stored)
+            created.append(stored)
+
+    return jsonify({
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "location": {"lat": lat, "lon": lon},
+        "risk": {
+            "level": level,
+            "rain_mm_h": rain_mm_h,
+            "river_level_m": river_value,
+            "reasons": reasons,
+        },
+        "official_alerts": official.get("alerts", []),
+        "created_alerts": created,
+    })
+
+
 @app.post("/measurements")
 def create_measurement():
     data = request.get_json(force=True)
@@ -154,6 +254,9 @@ def create_measurement():
             "station_id": station_id,
             "timestamp": item["timestamp"],
             "level": level,
+            "alert_type": "RIESGO_CALCULADO",
+            "official": False,
+            "source": "Climate Alert Platform",
             "message": f"Riesgo {level}: {', '.join(reasons)}",
         })
 
