@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: climate-alert-platform-api
+    runtime: python
+    repo: https://github.com/Isa18121999/Climate-alert--platform
+    branch: main
+    rootDir: api
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    autoDeploy: true
