@@ -1,4 +1,4 @@
-# Propuesta 1 — Plataforma de Alerta Temprana para Lluvias Extremas e Inundaciones
+# Plataforma de Alerta Temprana para Lluvias Extremas e Inundaciones
 
 MVP API-first serverless basado en AWS para consumir fuentes meteorológicas/hidrológicas, calcular riesgo, consultar noticias recientes y exponer alertas en tiempo casi real.
 
