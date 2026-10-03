@@ -18,7 +18,7 @@ h2{margin:0 0 10px;font-size:21px}.status{padding:10px 12px;border-radius:12px;b
 table{width:100%;border-collapse:collapse;margin-top:10px}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);font-size:13px}
 .news{display:grid;gap:10px}.news-item{border:1px solid var(--line);border-radius:13px;padding:13px}.news-item a{color:var(--primary);text-decoration:none;font-weight:750}.meta{margin-top:5px;color:var(--muted);font-size:12px}
 .pills{display:flex;flex-wrap:wrap;gap:7px;margin:13px 0}.pill{padding:6px 9px;background:#edf7ff;color:#24516d;border-radius:999px;font-size:12px}
-.badge{display:inline-block;padding:4px 8px;border-radius:999px;font-weight:800;font-size:11px}.ok{background:#dff7e7;color:#15723e}.warn{background:#fff1c9;color:#785300}.danger{background:#ffe0e0;color:#a01818}
+.badge{display:inline-block;padding:4px 8px;border-radius:999px;font-weight:800;font-size:11px}.ok{background:#dff7e7;color:#15723e}.warn{background:#fff1c9;color:#785300}.danger{background:#ffe0e0;color:#a01818}.news-level{display:inline-block;padding:3px 7px;border-radius:999px;font-weight:800;font-size:10px;margin-right:7px}.critical{background:#ffe0e0;color:#a01818}.high{background:#ffe9cf;color:#9a4a00}.medium{background:#fff5cc;color:#785300}.info{background:#e8f1fb;color:#24516d}
 footer{color:var(--muted);font-size:12px;padding:18px 3px}
 @media(max-width:950px){.grid{grid-template-columns:repeat(2,1fr)}.grid2{grid-template-columns:1fr}}@media(max-width:600px){.grid{grid-template-columns:1fr}.wrap{padding:12px}.hero h1{font-size:27px}#api{min-width:100%}}
 </style>
@@ -103,6 +103,14 @@ function localRisk(rain,river){
   return {level:'BAJO',reason:'No se alcanzaron umbrales de atención del MVP.'};
 }
 
+function classifyNews(a){
+  const t=((a.title||'')+' '+(a.description||'')).toLowerCase();
+  if(/desborde|inundaci[oó]n|huaico|emergencia|r[ií]o crece|r[ií]o se desborda/.test(t)) return {label:'CRÍTICA',cls:'critical'};
+  if(/lluvia extrema|lluvias intensas|precipitaciones intensas|alerta|deslizamiento|activaci[oó]n de quebrada/.test(t)) return {label:'ALTA',cls:'high'};
+  if(/lluvia|lluvias|precipitaci[oó]n|pron[oó]stico|llovizna/.test(t)) return {label:'MEDIA',cls:'medium'};
+  return {label:'INFORMATIVA',cls:'info'};
+}
+
 async function loadDirectAPIs(){
   const lat=encodeURIComponent($('lat').value),lon=encodeURIComponent($('lon').value);
   const base=api();
@@ -134,7 +142,7 @@ async function loadDirectAPIs(){
   $('riskReason').textContent=rv.reason;
   const articles=n.articles||[];
   $('newsCount').textContent=articles.length;
-  $('news').innerHTML=articles.map(a=>'<div class="news-item"><a href="'+a.url+'" target="_blank" rel="noopener">'+(a.title||'Sin título')+'</a><div class="meta">'+(a.domain||a.source?.title||'fuente')+' · '+(a.seendate||a.publishedAt||'')+'</div></div>').join('')||'<div class="label">No se encontraron noticias en la ventana reciente.</div>';
+  $('news').innerHTML=articles.map(a=>{const level=classifyNews(a);return '<div class="news-item"><div><span class="news-level '+level.cls+'">'+level.label+'</span><a href="'+a.url+'" target="_blank" rel="noopener">'+(a.title||'Sin título')+'</a></div><div class="meta">'+(a.domain||a.source?.title||'fuente')+' · '+(a.seendate||a.publishedAt||'')+' · clasificación automática</div></div>';}).join('')||'<div class="label">No se encontraron noticias en la ventana reciente.</div>';
 }
 
 async function loadAWS(){
