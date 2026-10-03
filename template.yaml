@@ -4,7 +4,7 @@ Description: Propuesta 1 - Alerta temprana de lluvias extremas e inundaciones
 
 Globals:
   Function:
-    Runtime: python3.12
+    Runtime: python3.13
     Timeout: 15
     MemorySize: 256
     Environment:
