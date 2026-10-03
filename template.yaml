@@ -43,6 +43,11 @@ Resources:
         - SNSPublishMessagePolicy:
             TopicName: !GetAtt AlertTopic.TopicName
       Events:
+        ScheduledMonitor:
+          Type: Schedule
+          Properties:
+            Schedule: rate(15 minutes)
+            Input: '{"action":"monitor"}'
         PostMeasurement:
           Type: HttpApi
           Properties:
