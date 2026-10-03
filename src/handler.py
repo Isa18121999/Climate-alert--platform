@@ -10,6 +10,7 @@ import boto3
 
 from risk_engine import evaluate_risk
 from external_apis import flood, news, weather
+from senamhi import senamhi_alerts
 
 
 measurements = boto3.resource("dynamodb").Table(os.environ["MEASUREMENTS_TABLE"])
@@ -39,6 +40,10 @@ def app(event: dict, _context) -> dict:
             return list_items(measurements)
         if route.startswith("GET /alerts"):
             return list_items(alerts)
+        if route.startswith("GET /official-alerts"):
+            return response(200, senamhi_alerts())
+        if route.startswith("GET /health"):
+            return response(200, {"status": "ok", "provider": "AWS", "environment": "production"})
         if route.startswith("GET /weather"):
             params = event.get("queryStringParameters") or {}
             lat = float(params.get("lat", "-5.1945"))
@@ -102,6 +107,98 @@ def ingest_measurement(data: dict) -> dict:
 
     item["measurement_id"] = measurement_id
     return response(201, {"measurement": item})
+
+
+
+def run_monitor() -> dict:
+    lat = float(os.getenv("DEFAULT_LAT", "-5.1945"))
+    lon = float(os.getenv("DEFAULT_LON", "-80.6328"))
+    station_id = os.getenv("DEFAULT_STATION_ID", "PIURA-001")
+
+    weather_data = weather(lat, lon)
+    flood_data = flood(lat, lon)
+    current = weather_data.get("current") or {}
+    daily = flood_data.get("daily") or {}
+    rain = float(current.get("rain") or 0)
+    river_values = daily.get("river_discharge") or [0]
+    river = float(river_values[0] or 0)
+
+    result = evaluate_risk(rain, river)
+    created = []
+
+    if result.level in {"ALTO", "CRITICO"}:
+        bucket = datetime.now(timezone.utc).strftime("%Y%m%d%H")
+        alert_id = f"risk-{station_id}-{bucket}"
+        alert = {
+            "station_id": station_id,
+            "alert_id": alert_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "level": result.level,
+            "alert_type": "RIESGO_CALCULADO",
+            "official": False,
+            "source": "Climate Alert Platform",
+            "message": f"Riesgo {result.level}: {', '.join(result.reasons)}",
+            "rain_mm_h": Decimal(str(rain)),
+            "river_level_m": Decimal(str(river)),
+        }
+        try:
+            alerts.put_item(Item=alert, ConditionExpression="attribute_not_exists(alert_id)")
+            created.append(alert)
+            topic_arn = os.getenv("SNS_TOPIC_ARN")
+            if topic_arn:
+                sns.publish(
+                    TopicArn=topic_arn,
+                    Subject=f"Alerta {result.level} - {station_id}",
+                    Message=json.dumps(alert, default=str, ensure_ascii=False),
+                )
+        except Exception as exc:
+            if "ConditionalCheckFailed" not in str(exc):
+                raise
+
+    official = senamhi_alerts()
+    for item in official.get("alerts", []):
+        alert_id = f"official-{item['id']}"
+        alert = {
+            "station_id": station_id,
+            "alert_id": alert_id,
+            "timestamp": item.get("issued_at") or datetime.now(timezone.utc).isoformat(),
+            "level": item.get("level", "INFORMACION"),
+            "alert_type": item.get("type", "AVISO_OFICIAL"),
+            "official": True,
+            "source": item.get("source", "SENAMHI"),
+            "title": item.get("title"),
+            "number": item.get("number"),
+            "start_at": item.get("start_at"),
+            "end_at": item.get("end_at"),
+            "url": item.get("url"),
+            "message": item.get("title", "Aviso oficial SENAMHI"),
+        }
+        try:
+            alerts.put_item(Item=alert, ConditionExpression="attribute_not_exists(alert_id)")
+            created.append(alert)
+            topic_arn = os.getenv("SNS_TOPIC_ARN")
+            if topic_arn:
+                sns.publish(
+                    TopicArn=topic_arn,
+                    Subject=f"Aviso SENAMHI {alert['level']}",
+                    Message=json.dumps(alert, ensure_ascii=False),
+                )
+        except Exception as exc:
+            if "ConditionalCheckFailed" not in str(exc):
+                raise
+
+    return response(200, {
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "location": {"lat": lat, "lon": lon},
+        "risk": {
+            "level": result.level,
+            "rain_mm_h": rain,
+            "river_level_m": river,
+            "reasons": result.reasons,
+        },
+        "official_alerts": official.get("alerts", []),
+        "created_alerts": created,
+    })
 
 
 def list_items(table) -> dict:
