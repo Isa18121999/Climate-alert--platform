@@ -18,7 +18,7 @@ h2{margin:0 0 10px;font-size:21px}.status{padding:10px 12px;border-radius:12px;b
 table{width:100%;border-collapse:collapse;margin-top:10px}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);font-size:13px}
 .news{display:grid;gap:10px}.news-item{border:1px solid var(--line);border-radius:13px;padding:13px}.news-item a{color:var(--primary);text-decoration:none;font-weight:750}.meta{margin-top:5px;color:var(--muted);font-size:12px}
 .pills{display:flex;flex-wrap:wrap;gap:7px;margin:13px 0}.pill{padding:6px 9px;background:#edf7ff;color:#24516d;border-radius:999px;font-size:12px}
-.badge{display:inline-block;padding:4px 8px;border-radius:999px;font-weight:800;font-size:11px}.ok{background:#dff7e7;color:#15723e}.warn{background:#fff1c9;color:#785300}.danger{background:#ffe0e0;color:#a01818}.news-level{display:inline-block;padding:3px 7px;border-radius:999px;font-weight:800;font-size:10px;margin-right:7px}.critical{background:#ffe0e0;color:#a01818}.high{background:#ffe9cf;color:#9a4a00}.medium{background:#fff5cc;color:#785300}.info{background:#e8f1fb;color:#24516d}
+.badge{display:inline-block;padding:4px 8px;border-radius:999px;font-weight:800;font-size:11px}.ok{background:#dff7e7;color:#15723e}.warn{background:#fff1c9;color:#785300}.danger{background:#ffe0e0;color:#a01818}.alert-card{border:1px solid var(--line);border-left:5px solid #c8d4dc;border-radius:13px;padding:13px}.alert-card.critical{border-left-color:#c1121f}.alert-card.high{border-left-color:#e07a00}.alert-card.medium{border-left-color:#c19a00}.alert-card.official{background:#fffaf0}.alert-title{font-weight:800}.empty{color:var(--muted);font-size:13px}.alert-meta{margin-top:6px;color:var(--muted);font-size:12px}.alert-link{display:inline-block;margin-top:8px;color:var(--primary);font-weight:750;text-decoration:none}.news-level{display:inline-block;padding:3px 7px;border-radius:999px;font-weight:800;font-size:10px;margin-right:7px}.critical{background:#ffe0e0;color:#a01818}.high{background:#ffe9cf;color:#9a4a00}.medium{background:#fff5cc;color:#785300}.info{background:#e8f1fb;color:#24516d}
 footer{color:var(--muted);font-size:12px;padding:18px 3px}
 @media(max-width:950px){.grid{grid-template-columns:repeat(2,1fr)}.grid2{grid-template-columns:1fr}}@media(max-width:600px){.grid{grid-template-columns:1fr}.wrap{padding:12px}.hero h1{font-size:27px}#api{min-width:100%}}
 </style>
@@ -72,14 +72,21 @@ footer{color:var(--muted);font-size:12px;padding:18px 3px}
 </section>
 
 <section class="card" style="margin-top:14px">
+  <h2>🚨 Alertas y avisos oficiales</h2>
+  <div id="alertsStatus" class="status">Consultando alertas…</div>
+  <div id="officialAlerts" style="display:grid;gap:10px;margin-top:10px"></div>
+  <div id="systemAlerts" style="display:grid;gap:10px;margin-top:10px"></div>
+</section>
+
+<section class="card" style="margin-top:14px">
   <h2>📰 Noticias de riesgo y emergencias</h2>
   <div class="label" style="margin-bottom:10px">Búsqueda: Perú · lluvias · inundaciones · El Niño</div>
   <div id="news" class="news"><div class="label">Cargando noticias…</div></div>
 </section>
 
 <section class="card" style="margin-top:14px">
-  <h2>🗄️ Medición registrada en AWS</h2>
-  <div id="measurements" class="status">Conecta la URL de API Gateway para ver las mediciones guardadas en DynamoDB.</div>
+  <h2>🗄️ Mediciones registradas en la nube</h2>
+  <div id="measurements" class="status">Conecta la API para ver las mediciones guardadas.</div>
   <table><thead><tr><th>Estación</th><th>Lluvia mm/h</th><th>Nivel de río m</th><th>Riesgo</th></tr></thead><tbody id="rows"></tbody></table>
 </section>
 
@@ -146,16 +153,51 @@ async function loadDirectAPIs(){
 }
 
 async function loadAWS(){
-  if(!api()){ $('backend').textContent='Modo web directo activo: Weather, Flood y News se consultan mediante APIs públicas. El backend AWS se conecta al colocar su URL de API Gateway.'; return; }
+  if(!api()){
+    $('backend').textContent='Modo web directo activo: Weather, Flood y News se consultan mediante APIs públicas. Conecta el backend para ver alertas y mediciones.';
+    $('alertsStatus').textContent='Conecta el backend para consultar alertas.';
+    return;
+  }
   try{
-    const [m,a]=await Promise.all([q(api()+'/measurements'),q(api()+'/alerts')]);
-    $('backend').textContent='Backend AWS conectado: API Gateway + Lambda + DynamoDB.';
+    const [m,a,official,h]=await Promise.all([
+      q(api()+'/measurements'),
+      q(api()+'/alerts'),
+      q(api()+'/official-alerts'),
+      q(api()+'/health')
+    ]);
+    const provider=h.provider||'backend cloud';
+    $('backend').textContent='Backend conectado: '+provider+' · monitoreo automático preparado cada 15 minutos en AWS/cron.';
     const items=m.items||[];
     $('measurements').textContent=items.length+' mediciones recibidas desde DynamoDB.';
     $('rows').innerHTML=items.slice(0,10).map(x=>'<tr><td>'+(x.station_id||'—')+'</td><td>'+((x.rain_mm_h??'—'))+'</td><td>'+((x.river_level_m??'—'))+'</td><td>'+riskBadge(x.risk_level||'—')+'</td></tr>').join('');
+
+    const officialItems=official.alerts||[];
+    const generatedItems=(a.items||[]).filter(x=>x.alert_type==='RIESGO_CALCULADO');
+    $('alertsStatus').textContent='SENAMHI: '+officialItems.length+' avisos relevantes · alertas calculadas: '+generatedItems.length+' · última consulta '+new Date().toLocaleString('es-PE');
+
+    const levelClass=level=>{
+      const x=(level||'').toUpperCase();
+      if(x.includes('ROJO')||x.includes('CRITICO')) return 'critical';
+      if(x.includes('NARANJA')||x.includes('ALTO')) return 'high';
+      if(x.includes('AMARILLO')||x.includes('MEDIO')) return 'medium';
+      return '';
+    };
+    const officialHtml=officialItems.slice(0,8).map(x=>{
+      const cls=levelClass(x.level);
+      return '<div class="alert-card official '+cls+'"><div><span class="badge '+(cls==='critical'?'danger':cls==='high'?'danger':cls==='medium'?'warn':'ok')+'">'+(x.level||'INFORMACION')+'</span> <span class="alert-title">'+(x.title||'Aviso oficial SENAMHI')+'</span></div><div class="alert-meta">SENAMHI · N.º '+(x.number||'—')+' · Inicio: '+(x.start_at||'—')+' · Fin: '+(x.end_at||'—')+'</div><a class="alert-link" href="'+(x.url||'https://www.senamhi.gob.pe/?p=avisos')+'" target="_blank" rel="noopener">Ver aviso oficial</a></div>';
+    }).join('');
+    $('officialAlerts').innerHTML=officialHtml||'<div class="empty">No se encontraron avisos oficiales relacionados con lluvias, inundaciones, crecidas o quebradas.</div>';
+
+    const generatedHtml=generatedItems.slice(0,8).map(x=>{
+      const cls=levelClass(x.level);
+      return '<div class="alert-card '+cls+'"><div><span class="badge '+(cls==='critical'?'danger':cls==='high'?'danger':cls==='medium'?'warn':'ok')+'">'+(x.level||'BAJO')+'</span> <span class="alert-title">Riesgo calculado por la plataforma</span></div><div class="alert-meta">'+(x.message||'Sin detalle')+' · '+(x.timestamp||'')+'</div></div>';
+    }).join('');
+    $('systemAlerts').innerHTML=generatedHtml||'<div class="empty">No hay alertas calculadas de nivel alto o crítico.</div>';
+
     if(!items.length)$('rows').innerHTML='';
   }catch(e){
-    $('backend').textContent='No se pudo conectar con API Gateway: '+e.message;
+    $('backend').textContent='No se pudo conectar con el backend: '+e.message;
+    $('alertsStatus').textContent='No se pudieron consultar las alertas.';
   }
 }
 
