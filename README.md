@@ -122,3 +122,13 @@ python src/risk_engine.py
 ## Alcance académico
 
 Este repositorio implementa un **MVP demostrable** de la propuesta: ingestión, procesamiento, persistencia, evaluación y visualización. Para una solución operativa se requerirían validación hidrológica, calibración por cuenca, integración con fuentes oficiales y un protocolo institucional de emisión de alertas.
+
+## Demostración web publicada
+
+- Frontend: https://climate-alert-platform.onrender.com
+- Backend API: https://climate-alert-platform-api.onrender.com
+- Health check: https://climate-alert-platform-api.onrender.com/health
+
+El frontend consume el backend cloud para las rutas de clima, caudal y noticias. También se mantienen las integraciones directas documentadas como respaldo técnico.
+
+> Nota: esta versión usa Render para demostrar el despliegue web/API. La plantilla AWS SAM permanece en `template.yaml` para el despliegue equivalente sobre AWS cuando se disponga de credenciales/permisos AWS.
