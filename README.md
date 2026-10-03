@@ -61,6 +61,12 @@ GDELT News API ─────────┘
 }
 ```
 
+## Noticias en el dashboard
+
+El panel incluye una sección **Noticias de riesgo y emergencias**. Las noticias se obtienen desde el endpoint `/news` (GDELT por defecto), mostrando fuente y fecha/hora de detección o publicación cuando el proveedor la entrega. Además, la interfaz aplica una **clasificación automática orientativa** (CRÍTICA, ALTA, MEDIA e INFORMATIVA) basada en palabras clave. Esta clasificación es solo demostrativa: una noticia periodística no se convierte automáticamente en una alerta oficial.
+
+La actualización visual del dashboard se ejecuta cada 60 segundos, mientras que la llegada de nuevas noticias depende de la frecuencia de indexación del proveedor.
+
 ## Integración API-first
 
 El proyecto prioriza APIs externas como fuente de datos. El dashboard consulta las fuentes cada 60 segundos y muestra la hora de la última actualización. La frecuencia real de publicación depende de cada proveedor. La integración y las rutas están documentadas en `docs/API_INTEGRATION.md`.
