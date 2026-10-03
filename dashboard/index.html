@@ -159,6 +159,7 @@ async function loadAWS(){
     return;
   }
   try{
+    await q(api()+'/monitor');
     const [m,a,official,h]=await Promise.all([
       q(api()+'/measurements'),
       q(api()+'/alerts'),
