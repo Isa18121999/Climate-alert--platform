@@ -405,41 +405,103 @@ async function loadDirectAPIs(){
   if(!Number.isFinite(latNumber)||!Number.isFinite(lonNumber)||latNumber < -90||latNumber > 90||lonNumber < -180||lonNumber > 180){
     throw new Error('Ingresa coordenadas válidas: latitud entre -90 y 90 y longitud entre -180 y 180.');
   }
-  const lat=encodeURIComponent(latValue),lon=encodeURIComponent(lonValue);
-  const locationLabel=await updateLocationName(latValue, lonValue);
-  const base=api();
-  let w,f,n;
-  if(base){
-    const newsQuery=encodeURIComponent('Perú lluvias inundaciones desbordes huaicos El Niño');
-    [w,f,n]=await Promise.all([
-      q(base+'/weather?lat='+lat+'&lon='+lon),
-      q(base+'/flood?lat='+lat+'&lon='+lon),
-      (async()=>{try{const primary=await q(base+'/news?q='+newsQuery,9000);if((primary.articles||[]).length)return primary}catch(e){console.warn('AWS News no disponible:',e)}const backup=await q('https://climate-alert-platform-api.onrender.com/news?q='+newsQuery,9000);return backup})()
-    ]);
-  } else {
-    const weatherUrl='https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,relative_humidity_2m,precipitation,rain,wind_speed_10m&forecast_days=1&timezone=UTC';
-    const floodUrl='https://flood-api.open-meteo.com/v1/flood?latitude='+lat+'&longitude='+lon+'&daily=river_discharge,river_discharge_max&forecast_days=7&timezone=UTC';
-    const newsUrl='https://api.gdeltproject.org/api/v2/doc/doc?query=Peru%20inundaci%C3%B3n%20lluvias%20El%20Ni%C3%B1o&mode=ArtList&format=json&maxrecords=12&sort=HybridRel&timespan=15min&sourcelang=Spanish';
-    [w,f,n]=await Promise.all([q(weatherUrl),q(floodUrl),q(newsUrl)]);
-  }
-  const c=w.current||{},d=f.daily||{};
-  $('temp').textContent=c.temperature_2m!=null?c.temperature_2m+' °C':'—';
-  $('rain').textContent=c.rain!=null?c.rain+' mm':'—';
-  $('precip').textContent=c.precipitation!=null?c.precipitation+' mm':'—';
-  $('humidity').textContent=c.relative_humidity_2m!=null?c.relative_humidity_2m+' %':'—';
-  $('wind').textContent=c.wind_speed_10m!=null?c.wind_speed_10m+' km/h':'—';
-  const discharge=d.river_discharge||[];
-  const maxs=d.river_discharge_max||[];
-  $('river').textContent=discharge.length?discharge[0]+' m³/s':'—';
-  $('riverMax').textContent=maxs.length?Math.max(...maxs)+' m³/s':'—';
-  const rv=localRisk(Number(c.rain||0),Number(discharge[0]||0));
-  $('risk').innerHTML=riskBadge(rv.level);
-  $('riskReason').textContent=rv.reason;
-  const articles=n.articles||[];
-  $('newsCount').textContent=articles.length;
-  $('news').innerHTML=articles.map(a=>{const level=classifyNews(a);return '<div class="news-item"><div class="news-body"><div><span class="news-level '+level.cls+'">'+level.label+'</span> <a href="'+a.url+'" target="_blank" rel="noopener">'+(a.title||'Sin título')+'</a></div><div class="news-source">'+(a.domain||a.source?.title||'fuente')+' · '+(a.seendate||a.publishedAt||'')+' · clasificación automática</div></div><span style="font-size:14px">↗</span></div>';}).join('')||'<div class="empty">No se encontraron noticias recientes de riesgo para Perú.</div>';
-}
 
+  const lat=encodeURIComponent(latValue), lon=encodeURIComponent(lonValue);
+  await updateLocationName(latValue, lonValue);
+
+  const base=api();
+  const weatherDirect='https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,relative_humidity_2m,precipitation,rain,wind_speed_10m&forecast_days=1&timezone=UTC';
+  const floodDirect='https://flood-api.open-meteo.com/v1/flood?latitude='+lat+'&longitude='+lon+'&daily=river_discharge,river_discharge_max&forecast_days=7&timezone=UTC';
+  const newsQuery=encodeURIComponent('Perú lluvias inundaciones desbordes huaicos El Niño');
+
+  let w=null, f=null, n=null;
+  const problems=[];
+
+  try{
+    w=await q(weatherDirect,10000);
+  }catch(e){
+    problems.push('Weather directo: '+e.message);
+    if(base){
+      try{ w=await q(base+'/weather?lat='+lat+'&lon='+lon,10000); }
+      catch(e2){ problems.push('Weather AWS: '+e2.message); }
+    }
+  }
+
+  try{
+    f=await q(floodDirect,10000);
+  }catch(e){
+    problems.push('Flood directo: '+e.message);
+    if(base){
+      try{ f=await q(base+'/flood?lat='+lat+'&lon='+lon,10000); }
+      catch(e2){ problems.push('Flood AWS: '+e2.message); }
+    }
+  }
+
+  try{
+    if(base){
+      const primary=await q(base+'/news?q='+newsQuery,9000);
+      if((primary.articles||[]).length) n=primary;
+      else throw new Error('AWS News devolvió 0 artículos');
+    }else{
+      throw new Error('Sin backend AWS');
+    }
+  }catch(e){
+    console.warn('AWS News no disponible:',e);
+    try{
+      n=await q('https://climate-alert-platform-api.onrender.com/news?q='+newsQuery,10000);
+    }catch(e2){
+      problems.push('Noticias Render: '+e2.message);
+      try{
+        const newsUrl='https://news.google.com/rss/search?q='+newsQuery+'&hl=es-419&gl=PE&ceid=PE:es-419';
+        n=await q(newsUrl,10000);
+      }catch(e3){
+        problems.push('Noticias Google RSS: '+e3.message);
+      }
+    }
+  }
+
+  if(w){
+    const current=w.current||{};
+    $('temp').textContent=current.temperature_2m!=null?current.temperature_2m+' °C':'—';
+    $('rain').textContent=current.rain!=null?current.rain+' mm':'—';
+    $('precip').textContent=current.precipitation!=null?current.precipitation+' mm':'—';
+    $('humidity').textContent=current.relative_humidity_2m!=null?current.relative_humidity_2m+' %':'—';
+    $('wind').textContent=current.wind_speed_10m!=null?current.wind_speed_10m+' km/h':'—';
+  }
+
+  let discharge=[], maxs=[];
+  if(f){
+    const d=f.daily||{};
+    discharge=d.river_discharge||[];
+    maxs=d.river_discharge_max||[];
+    $('river').textContent=discharge.length?discharge[0]+' m³/s':'—';
+    $('riverMax').textContent=maxs.length?Math.max(...maxs)+' m³/s':'—';
+  }
+
+  if(w){
+    const current=w.current||{};
+    const rv=localRisk(Number(current.rain||0),Number(discharge[0]||0));
+    $('risk').innerHTML=riskBadge(rv.level);
+    $('riskReason').textContent=rv.reason;
+  }
+
+  const articles=(n&&n.articles)||[];
+  $('newsCount').textContent=articles.length;
+  $('news').innerHTML=articles.length
+    ? articles.map(a=>{
+        const level=classifyNews(a);
+        return '<div class="news-item"><div class="news-body"><div><span class="news-level '+level.cls+'">'+level.label+'</span> <a href="'+(a.url||'#')+'" target="_blank" rel="noopener">'+(a.title||'Sin título')+'</a></div><div class="news-source">'+(a.domain||a.source?.title||'fuente')+' · '+(a.seendate||a.publishedAt||'')+' · clasificación automática</div></div><span style="font-size:14px">↗</span></div>';
+      }).join('')
+    : '<div class="empty">No se encontraron noticias recientes de riesgo para Perú.</div>';
+
+  if(!w && !f){
+    throw new Error('No fue posible consultar Weather ni Flood. '+problems.join(' | '));
+  }
+
+  $('status').textContent=problems.length
+    ? 'Datos cargados con respaldo automático: '+problems.join(' | ')
+    : 'APIs externas consultadas correctamente.';
+}
 async function loadAWS(){
   if(!api()){
     $('backend').textContent='Modo web directo activo: Weather, Flood y News se consultan mediante APIs públicas. Conecta el backend para ver alertas y mediciones.';
@@ -455,11 +517,12 @@ async function loadAWS(){
     ]);
     const [mRes,aRes,officialRes,hRes]=results;
     const h=hRes.status==='fulfilled'?hRes.value:{provider:'AWS'};
+    let items=[];
     const provider=h.provider||'backend cloud';
     $('backend').textContent='Backend conectado: '+provider+' · AWS API Gateway + Lambda + DynamoDB + SNS.';
     if(mRes.status==='fulfilled'){
       const m=mRes.value;
-      const items=m.items||[];
+      items=m.items||[];
       $('measurements').textContent=items.length+' mediciones recibidas desde DynamoDB.';
       $('rows').innerHTML=items.slice(0,10).map(x=>'<tr><td>'+(x.station_id||'—')+'</td><td>'+((x.rain_mm_h??'—'))+'</td><td>'+((x.river_level_m??'—'))+'</td><td>'+riskBadge(x.risk_level||'—')+'</td></tr>').join('');
     }else{
