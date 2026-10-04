@@ -32,7 +32,15 @@ def _body(event: dict) -> dict:
 
 
 def app(event: dict, _context) -> dict:
-    route = event.get("routeKey") or f"{event.get('requestContext', {}).get('http', {}).get('method', '')} {event.get('rawPath', '')}"
+    if event.get("action") == "monitor":
+        return run_monitor()
+
+    request_http = event.get("requestContext", {}).get("http", {})
+    method = request_http.get("method", "")
+    path = event.get("rawPath") or request_http.get("path", "")
+    route_key = event.get("routeKey", "")
+    route = route_key if route_key and route_key != "$default" else f"{method} {path}"
+
     try:
         if route.startswith("POST /measurements"):
             return ingest_measurement(_body(event))
