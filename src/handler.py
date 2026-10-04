@@ -21,7 +21,12 @@ sns = boto3.client("sns")
 def response(status: int, body: dict) -> dict:
     return {
         "statusCode": status,
-        "headers": {"content-type": "application/json"},
+        "headers": {
+            "content-type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "content-type",
+            "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+        },
         "body": json.dumps(body, default=str),
     }
 
