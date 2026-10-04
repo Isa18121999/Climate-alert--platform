@@ -31,7 +31,7 @@ footer{color:var(--muted);font-size:12px;padding:18px 3px}
   <div class="toolbar">
     <input id="lat" value="-5.1945" aria-label="Latitud" placeholder="Latitud">
     <input id="lon" value="-80.6328" aria-label="Longitud" placeholder="Longitud">
-    <input id="api" value="https://18mrn74312.execute-api.us-east-1.amazonaws.com" aria-label="URL del backend AWS" placeholder="URL del backend AWS">
+    <input id="api" value="https://kz34irut7h.execute-api.us-east-1.amazonaws.com" aria-label="URL del backend AWS" placeholder="URL del backend AWS">
     <button onclick="refreshAll()">Actualizar ahora</button>
   </div>
   <div class="live"><span class="dot"></span> Datos externos consultados en vivo · interfaz actualizada cada 60 segundos</div>
@@ -41,7 +41,7 @@ footer{color:var(--muted);font-size:12px;padding:18px 3px}
   <div class="card"><div class="label">Temperatura</div><div id="temp" class="value">—</div><div class="source">Open-Meteo Weather API</div></div>
   <div class="card"><div class="label">Lluvia actual</div><div id="rain" class="value">—</div><div class="source">Open-Meteo Weather API</div></div>
   <div class="card"><div class="label">Caudal fluvial</div><div id="river" class="value">—</div><div class="source">Open-Meteo Flood API / GloFAS</div></div>
-  <div class="card"><div class="label">Noticias recientes</div><div id="newsCount" class="value">—</div><div class="source">GDELT DOC 2.0</div></div>
+  <div class="card"><div class="label">Noticias recientes</div><div id="newsCount" class="value">—</div><div class="source">GDELT DOC 2.0 + RSS fallback</div></div>
 </section>
 
 <section class="grid2">
@@ -159,7 +159,6 @@ async function loadAWS(){
     return;
   }
   try{
-    await q(api()+'/monitor');
     const [m,a,official,h]=await Promise.all([
       q(api()+'/measurements'),
       q(api()+'/alerts'),
@@ -167,7 +166,7 @@ async function loadAWS(){
       q(api()+'/health')
     ]);
     const provider=h.provider||'backend cloud';
-    $('backend').textContent='Backend conectado: '+provider+' · monitoreo automático preparado cada 15 minutos en AWS/cron.';
+    $('backend').textContent='Backend conectado: '+provider+' · AWS API Gateway + Lambda + DynamoDB + SNS.';
     const items=m.items||[];
     $('measurements').textContent=items.length+' mediciones recibidas desde DynamoDB.';
     $('rows').innerHTML=items.slice(0,10).map(x=>'<tr><td>'+(x.station_id||'—')+'</td><td>'+((x.rain_mm_h??'—'))+'</td><td>'+((x.river_level_m??'—'))+'</td><td>'+riskBadge(x.risk_level||'—')+'</td></tr>').join('');
