@@ -325,7 +325,7 @@ footer{color:var(--muted);font-size:11px;padding:20px 3px 12px;text-align:center
   <div class="table-wrap"><table><thead><tr><th>Estación</th><th>Lluvia mm/h</th><th>Nivel de río m</th><th>Riesgo</th></tr></thead><tbody id="rows"></tbody></table></div>
 </section>
 
-<footer>Proyecto académico de Computación en la Nube · Las APIs externas determinan la disponibilidad y frecuencia real de actualización de sus fuentes.</footer>
+<footer>Proyecto académico de Computación en la Nube · Las APIs externas determinan la disponibilidad y frecuencia real de actualización de sus fuentes. · Geocodificación: © OpenStreetMap contributors</footer>
 </div>
 
 <script>
@@ -353,10 +353,39 @@ function classifyNews(a){
   return {label:'INFORMATIVA',cls:'info'};
 }
 
+let lastResolvedCoords='';
+async function updateLocationName(latValue, lonValue){
+  const latNum=Number(latValue), lonNum=Number(lonValue);
+  if(!Number.isFinite(latNum)||!Number.isFinite(lonNum)) return;
+  const key=latNum.toFixed(6)+','+lonNum.toFixed(6);
+  $('locationTag').textContent='📍 Buscando ubicación…';
+  try{
+    if(key===lastResolvedCoords) return;
+    const url='https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&accept-language=es&zoom=14&lat='+encodeURIComponent(latNum)+'&lon='+encodeURIComponent(lonNum);
+    const r=await fetch(url,{headers:{'Accept':'application/json'}});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const data=await r.json();
+    const a=data.address||{};
+    const locality=a.city||a.town||a.municipality||a.village||a.suburb||a.county||'Ubicación seleccionada';
+    const district=a.suburb||a.city_district||a.municipality;
+    const region=a.state||a.region;
+    const country=a.country||'';
+    const parts=[];
+    if(locality) parts.push(locality);
+    if(district && district!==locality) parts.push(district);
+    if(region && region!==locality && region!==district) parts.push(region);
+    if(country) parts.push(country);
+    $('locationTag').textContent='📍 '+(parts.length?parts.join(', '):(latNum.toFixed(4)+' · '+lonNum.toFixed(4)));
+    lastResolvedCoords=key;
+  }catch(e){
+    $('locationTag').textContent='📍 '+latNum.toFixed(4)+' · '+lonNum.toFixed(4);
+  }
+}
+
 async function loadDirectAPIs(){
   const latValue=$('lat').value, lonValue=$('lon').value;
   const lat=encodeURIComponent(latValue),lon=encodeURIComponent(lonValue);
-  $('locationTag').textContent='📍 '+Number(latValue).toFixed(4)+' · '+Number(lonValue).toFixed(4);
+  await updateLocationName(latValue, lonValue);
   const base=api();
   let w,f,n;
   if(base){
