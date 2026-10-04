@@ -5,89 +5,324 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Climate Alert Platform | Propuesta 1</title>
 <style>
-:root{--bg:#f3f7fa;--card:#fff;--text:#17324d;--muted:#647789;--primary:#0b6e99;--secondary:#1ba39c;--line:#e2eaf0}
-*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:var(--bg);color:var(--text)}
-.wrap{max-width:1250px;margin:auto;padding:22px}
-.hero{color:#fff;background:linear-gradient(135deg,var(--primary),var(--secondary));border-radius:24px;padding:30px;box-shadow:0 10px 30px #0b6e9925}
-.hero h1{margin:0 0 8px;font-size:34px}.hero p{margin:0;opacity:.92}.toolbar{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
-input,button{border:0;border-radius:11px;padding:11px 13px;font-size:14px}input{background:#ffffffea;color:#17324d;min-width:115px}#api{flex:1;min-width:300px}button{background:#17324d;color:#fff;cursor:pointer;font-weight:700}
-.live{display:inline-flex;align-items:center;gap:8px;margin-top:14px;font-size:13px}.dot{width:9px;height:9px;border-radius:50%;background:#9fffc0;box-shadow:0 0 0 4px #ffffff22}
-.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:16px}.grid2{display:grid;grid-template-columns:1.1fr .9fr;gap:14px;margin-top:14px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:19px;box-shadow:0 6px 20px #17324d0a}.label{color:var(--muted);font-size:13px}.value{font-size:28px;font-weight:800;margin-top:7px}.source{color:var(--muted);font-size:12px;margin-top:5px}
-h2{margin:0 0 10px;font-size:21px}.status{padding:10px 12px;border-radius:12px;background:#eef7fb;color:#426277;font-size:13px}
-table{width:100%;border-collapse:collapse;margin-top:10px}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);font-size:13px}
-.news{display:grid;gap:10px}.news-item{border:1px solid var(--line);border-radius:13px;padding:13px}.news-item a{color:var(--primary);text-decoration:none;font-weight:750}.meta{margin-top:5px;color:var(--muted);font-size:12px}
-.pills{display:flex;flex-wrap:wrap;gap:7px;margin:13px 0}.pill{padding:6px 9px;background:#edf7ff;color:#24516d;border-radius:999px;font-size:12px}
-.badge{display:inline-block;padding:4px 8px;border-radius:999px;font-weight:800;font-size:11px}.ok{background:#dff7e7;color:#15723e}.warn{background:#fff1c9;color:#785300}.danger{background:#ffe0e0;color:#a01818}.alert-card{border:1px solid var(--line);border-left:5px solid #c8d4dc;border-radius:13px;padding:13px}.alert-card.critical{border-left-color:#c1121f}.alert-card.high{border-left-color:#e07a00}.alert-card.medium{border-left-color:#c19a00}.alert-card.official{background:#fffaf0}.alert-title{font-weight:800}.empty{color:var(--muted);font-size:13px}.alert-meta{margin-top:6px;color:var(--muted);font-size:12px}.alert-link{display:inline-block;margin-top:8px;color:var(--primary);font-weight:750;text-decoration:none}.news-level{display:inline-block;padding:3px 7px;border-radius:999px;font-weight:800;font-size:10px;margin-right:7px}.critical{background:#ffe0e0;color:#a01818}.high{background:#ffe9cf;color:#9a4a00}.medium{background:#fff5cc;color:#785300}.info{background:#e8f1fb;color:#24516d}
-footer{color:var(--muted);font-size:12px;padding:18px 3px}
-@media(max-width:950px){.grid{grid-template-columns:repeat(2,1fr)}.grid2{grid-template-columns:1fr}}@media(max-width:600px){.grid{grid-template-columns:1fr}.wrap{padding:12px}.hero h1{font-size:27px}#api{min-width:100%}}
+:root{
+  --bg:#eef5f8;
+  --surface:#ffffff;
+  --surface-soft:#f6fafb;
+  --text:#15334b;
+  --muted:#6d8090;
+  --primary:#0a718f;
+  --primary-2:#10a5a0;
+  --primary-dark:#07516d;
+  --line:#dce8ee;
+  --shadow:0 16px 40px rgba(19,64,88,.08);
+  --shadow-soft:0 8px 24px rgba(19,64,88,.06);
+  --success:#1b8d68;
+  --warning:#b57900;
+  --danger:#c53a43;
+  --info:#2d6e9a;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  background:
+    radial-gradient(circle at top right, rgba(16,165,160,.10), transparent 32%),
+    linear-gradient(180deg,#f6fbfc 0%,var(--bg) 36%,#edf4f7 100%);
+  color:var(--text);
+}
+button,input{font:inherit}
+button{border:0}
+.wrap{max-width:1320px;margin:auto;padding:22px}
+.hero{
+  position:relative;
+  overflow:hidden;
+  border-radius:30px;
+  padding:30px;
+  color:#fff;
+  background:
+    radial-gradient(circle at 88% 18%, rgba(255,255,255,.18), transparent 18%),
+    radial-gradient(circle at 12% 100%, rgba(255,255,255,.08), transparent 28%),
+    linear-gradient(135deg,#075d7b 0%,#0a7f98 45%,#10a5a0 100%);
+  box-shadow:0 22px 48px rgba(7,81,109,.20);
+}
+.hero:after{
+  content:"";
+  position:absolute;
+  inset:auto -10% -55% 35%;
+  height:240px;
+  border-radius:50%;
+  background:rgba(255,255,255,.06);
+  transform:rotate(-8deg);
+}
+.hero-top{position:relative;z-index:1;display:flex;align-items:flex-start;justify-content:space-between;gap:18px}
+.brand{display:flex;align-items:center;gap:15px}
+.brand-icon{
+  width:54px;height:54px;border-radius:17px;
+  display:grid;place-items:center;
+  background:rgba(255,255,255,.16);
+  border:1px solid rgba(255,255,255,.20);
+  font-size:27px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12);
+}
+.hero h1{margin:0;font-size:32px;line-height:1.05;letter-spacing:-.5px}
+.hero-sub{margin:8px 0 0;color:rgba(255,255,255,.82);font-size:14px}
+.live-pill{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:9px 12px;border-radius:999px;
+  background:rgba(255,255,255,.12);
+  border:1px solid rgba(255,255,255,.16);
+  color:#fff;font-size:12px;font-weight:800;white-space:nowrap;
+}
+.dot{width:9px;height:9px;border-radius:50%;background:#9fffc0;box-shadow:0 0 0 4px rgba(159,255,192,.12)}
+.hero-controls{position:relative;z-index:1;display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}
+.control{
+  height:44px;border-radius:13px;
+  border:1px solid rgba(255,255,255,.17);
+  background:rgba(255,255,255,.97);
+  color:var(--text);
+  padding:0 13px;
+  min-width:130px;
+  outline:none;
+}
+.control:focus{box-shadow:0 0 0 4px rgba(255,255,255,.15)}
+#api{flex:1;min-width:320px}
+.primary-btn{
+  height:44px;padding:0 18px;border-radius:13px;
+  background:#12384f;color:#fff;font-weight:850;
+  box-shadow:0 8px 20px rgba(8,39,56,.22);
+  cursor:pointer;
+}
+.primary-btn:hover{transform:translateY(-1px);background:#0f3145}
+.hero-footer{position:relative;z-index:1;display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-top:16px}
+.hero-note{font-size:12px;color:rgba(255,255,255,.84)}
+.location-tag{padding:7px 10px;border-radius:999px;background:rgba(255,255,255,.11);font-size:12px;font-weight:750}
+
+.summary{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:18px;
+}
+.metric{
+  position:relative;overflow:hidden;
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:20px;
+  padding:18px;
+  box-shadow:var(--shadow-soft);
+}
+.metric:before{
+  content:"";position:absolute;left:0;right:0;top:0;height:4px;
+  background:linear-gradient(90deg,var(--primary),var(--primary-2));
+}
+.metric-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.metric-icon{
+  width:38px;height:38px;border-radius:12px;
+  display:grid;place-items:center;
+  background:#eaf6f8;color:var(--primary-dark);font-size:18px;
+}
+.label{color:var(--muted);font-size:12px;font-weight:750;text-transform:uppercase;letter-spacing:.05em}
+.value{font-size:29px;font-weight:900;letter-spacing:-.5px;margin-top:10px}
+.source{color:var(--muted);font-size:11px;margin-top:5px;line-height:1.35}
+
+.grid2{display:grid;grid-template-columns:1.15fr .85fr;gap:16px;margin-top:16px}
+.card{
+  background:rgba(255,255,255,.94);
+  border:1px solid rgba(215,228,235,.9);
+  border-radius:22px;
+  padding:20px;
+  box-shadow:var(--shadow);
+  backdrop-filter:blur(8px);
+}
+.card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.card-title{display:flex;align-items:center;gap:10px}
+.card-title h2{margin:0;font-size:18px;letter-spacing:-.2px}
+.card-kicker{color:var(--muted);font-size:11px;margin-top:4px}
+.status{
+  padding:11px 13px;border-radius:13px;
+  background:#f0f8fa;color:#426277;font-size:12px;font-weight:700;
+  border:1px solid #deedf1;
+}
+.pills{display:flex;flex-wrap:wrap;gap:7px;margin:14px 0}
+.pill{padding:6px 10px;background:#eef8fa;color:#236076;border-radius:999px;font-size:11px;font-weight:800;border:1px solid #d9edf0}
+.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:14px}
+table{width:100%;border-collapse:collapse;margin-top:10px}
+th,td{text-align:left;padding:11px 10px;border-bottom:1px solid var(--line);font-size:12px}
+th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em;background:#f8fbfc}
+tr:last-child td{border-bottom:0}
+.risk-panel{display:flex;align-items:center;gap:14px;margin-top:16px;padding:16px;border-radius:18px;background:linear-gradient(135deg,#f7fbfc,#eef7f8);border:1px solid #deedf0}
+.risk-dot{width:46px;height:46px;border-radius:15px;display:grid;place-items:center;background:#e8f7ee;color:var(--success);font-size:20px}
+.risk-copy{min-width:0}.risk-label{font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:800;letter-spacing:.05em}.risk-value{font-size:25px;font-weight:900;margin-top:2px}
+
+.section-card{margin-top:16px}
+.alert-list,.news{display:grid;gap:10px;margin-top:12px}
+.alert-card{border:1px solid var(--line);border-left:5px solid #c8d4dc;border-radius:15px;padding:14px;background:#fff}
+.alert-card.critical{border-left-color:var(--danger)}
+.alert-card.high{border-left-color:#e07a00}
+.alert-card.medium{border-left-color:#c19a00}
+.alert-card.official{background:#fffaf1}
+.alert-title{font-weight:850}
+.alert-meta,.meta{margin-top:6px;color:var(--muted);font-size:11px;line-height:1.45}
+.alert-link{display:inline-block;margin-top:8px;color:var(--primary-dark);font-size:12px;font-weight:850;text-decoration:none}
+.alert-link:hover{text-decoration:underline}
+.badge,.news-level{
+  display:inline-flex;align-items:center;
+  padding:4px 9px;border-radius:999px;
+  font-weight:850;font-size:10px;
+}
+.ok{background:#def6e8;color:#15723e}
+.warn{background:#fff0c9;color:#785300}
+.danger{background:#ffe0e0;color:#a01818}
+.critical{background:#ffe0e0;color:#a01818}
+.high{background:#ffe9cf;color:#9a4a00}
+.medium{background:#fff5cc;color:#785300}
+.info{background:#e7f0f8;color:#24516d}
+.news-item{
+  display:flex;align-items:flex-start;gap:10px;
+  border:1px solid var(--line);border-radius:15px;
+  padding:14px;background:#fbfdfe;
+}
+.news-item a{color:var(--primary-dark);text-decoration:none;font-weight:850;font-size:13px;line-height:1.3}
+.news-item a:hover{text-decoration:underline}
+.news-body{flex:1;min-width:0}
+.news-source{color:var(--muted);font-size:11px;margin-top:5px}
+.empty{
+  color:var(--muted);font-size:12px;padding:18px;
+  text-align:center;background:var(--surface-soft);
+  border:1px dashed #d6e5eb;border-radius:14px
+}
+.config{
+  margin-top:12px;
+  border:1px solid rgba(255,255,255,.15);
+  border-radius:14px;
+  padding:10px 12px;
+  background:rgba(255,255,255,.08);
+}
+.config summary{cursor:pointer;color:rgba(255,255,255,.86);font-size:12px;font-weight:800}
+.config .config-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+.config .control{height:40px;min-width:0}
+#api{min-width:280px}
+footer{color:var(--muted);font-size:11px;padding:20px 3px 12px;text-align:center}
+@media(max-width:1000px){
+  .summary{grid-template-columns:repeat(2,1fr)}
+  .grid2{grid-template-columns:1fr}
+  .hero-top{flex-direction:column}
+}
+@media(max-width:650px){
+  .wrap{padding:12px}
+  .hero{padding:20px;border-radius:24px}
+  .hero h1{font-size:25px}
+  .brand-icon{width:46px;height:46px;border-radius:14px}
+  .summary{grid-template-columns:1fr 1fr;gap:10px}
+  .metric{padding:15px;border-radius:17px}
+  .value{font-size:23px}
+  .grid2,.section-card{margin-top:12px}
+  .card{padding:16px;border-radius:18px}
+  .hero-controls .control,.primary-btn{width:100%;min-width:0}
+  #api{min-width:0}
+  .news-item{padding:12px}
+  th,td{white-space:nowrap}
+}
 </style>
 </head>
 <body>
 <div class="wrap">
 <section class="hero">
-  <h1>🌧️ Climate Alert Platform</h1>
-  <p>Plataforma web de alerta temprana para lluvias extremas e inundaciones · Propuesta 1</p>
-  <div class="toolbar">
-    <input id="lat" value="-5.1945" aria-label="Latitud" placeholder="Latitud">
-    <input id="lon" value="-80.6328" aria-label="Longitud" placeholder="Longitud">
-    <input id="api" value="https://kz34irut7h.execute-api.us-east-1.amazonaws.com" aria-label="URL del backend AWS" placeholder="URL del backend AWS">
-    <button onclick="refreshAll()">Actualizar ahora</button>
+  <div class="hero-top">
+    <div class="brand">
+      <div class="brand-icon">🌧️</div>
+      <div>
+        <h1>Climate Alert Platform</h1>
+        <p class="hero-sub">Sistema de alerta temprana para lluvias extremas e inundaciones · Propuesta 1</p>
+      </div>
+    </div>
+    <div class="live-pill"><span class="dot"></span> AWS conectado</div>
   </div>
-  <div class="live"><span class="dot"></span> Datos externos consultados en vivo · interfaz actualizada cada 60 segundos</div>
+
+  <div class="hero-controls">
+    <input class="control" id="lat" value="-5.1945" aria-label="Latitud" placeholder="Latitud">
+    <input class="control" id="lon" value="-80.6328" aria-label="Longitud" placeholder="Longitud">
+    <button class="primary-btn" onclick="refreshAll()">↻ Actualizar datos</button>
+  </div>
+
+  <div class="hero-footer">
+    <div class="hero-note">Monitoreo meteorológico, hidrológico, noticias y alertas en una sola vista · actualización automática cada 60 segundos</div>
+    <div class="location-tag">📍 Piura · Perú</div>
+  </div>
+
+  <details class="config">
+    <summary>⚙️ Configuración técnica</summary>
+    <div class="config-row">
+      <input class="control" id="api" value="https://kz34irut7h.execute-api.us-east-1.amazonaws.com" aria-label="URL del backend AWS" placeholder="URL del backend AWS">
+    </div>
+  </details>
 </section>
 
-<section class="grid">
-  <div class="card"><div class="label">Temperatura</div><div id="temp" class="value">—</div><div class="source">Open-Meteo Weather API</div></div>
-  <div class="card"><div class="label">Lluvia actual</div><div id="rain" class="value">—</div><div class="source">Open-Meteo Weather API</div></div>
-  <div class="card"><div class="label">Caudal fluvial</div><div id="river" class="value">—</div><div class="source">Open-Meteo Flood API / GloFAS</div></div>
-  <div class="card"><div class="label">Noticias recientes</div><div id="newsCount" class="value">—</div><div class="source">GDELT DOC 2.0 + RSS fallback</div></div>
+<section class="summary">
+  <div class="metric">
+    <div class="metric-top"><div><div class="label">Temperatura</div><div id="temp" class="value">—</div></div><div class="metric-icon">🌡️</div></div>
+    <div class="source">Open-Meteo Weather API</div>
+  </div>
+  <div class="metric">
+    <div class="metric-top"><div><div class="label">Lluvia actual</div><div id="rain" class="value">—</div></div><div class="metric-icon">🌧️</div></div>
+    <div class="source">Open-Meteo Weather API</div>
+  </div>
+  <div class="metric">
+    <div class="metric-top"><div><div class="label">Caudal fluvial</div><div id="river" class="value">—</div></div><div class="metric-icon">🌊</div></div>
+    <div class="source">Open-Meteo Flood API / GloFAS</div>
+  </div>
+  <div class="metric">
+    <div class="metric-top"><div><div class="label">Noticias recientes</div><div id="newsCount" class="value">—</div></div><div class="metric-icon">📰</div></div>
+    <div class="source">GDELT DOC 2.0 + RSS fallback</div>
+  </div>
 </section>
 
 <section class="grid2">
   <div class="card">
-    <h2>📊 Monitoreo ambiental</h2>
+    <div class="card-head"><div><div class="card-title"><span>📊</span><div><h2>Monitoreo ambiental</h2><div class="card-kicker">Condiciones actuales y evolución de la zona monitoreada</div></div></div></div></div>
     <div id="status" class="status">Cargando APIs…</div>
     <div class="pills">
       <span class="pill">Open-Meteo</span><span class="pill">GloFAS</span><span class="pill">GDELT</span><span class="pill">API Gateway</span><span class="pill">AWS Lambda</span><span class="pill">DynamoDB</span>
     </div>
-    <table>
+    <div class="table-wrap"><table>
       <tr><th>Precipitación</th><td id="precip">—</td></tr>
       <tr><th>Humedad</th><td id="humidity">—</td></tr>
       <tr><th>Viento</th><td id="wind">—</td></tr>
       <tr><th>Caudal máximo (7 días)</th><td id="riverMax">—</td></tr>
       <tr><th>Última actualización</th><td id="updated">—</td></tr>
-    </table>
+    </table></div>
   </div>
 
   <div class="card">
-    <h2>🚨 Estado del sistema</h2>
+    <div class="card-head"><div class="card-title"><span>🚨</span><div><h2>Estado del sistema</h2><div class="card-kicker">Riesgo calculado y conectividad de la plataforma</div></div></div></div>
     <div id="backend" class="status">Backend AWS: API Gateway + Lambda + DynamoDB + SNS.</div>
-    <div style="margin-top:13px">
-      <div class="label">Nivel de riesgo calculado por el MVP</div>
-      <div id="risk" class="value">—</div>
-      <div id="riskReason" class="source">Se muestra como referencia demostrativa; los umbrales deben calibrarse antes de un uso operativo.</div>
+    <div class="risk-panel">
+      <div class="risk-dot">🛡️</div>
+      <div class="risk-copy">
+        <div class="risk-label">Nivel de riesgo calculado</div>
+        <div id="risk" class="risk-value">—</div>
+        <div id="riskReason" class="source">Referencia del MVP; los umbrales deben calibrarse antes de un uso operativo.</div>
+      </div>
     </div>
   </div>
 </section>
 
-<section class="card" style="margin-top:14px">
-  <h2>🚨 Alertas y avisos oficiales</h2>
+<section class="card section-card">
+  <div class="card-title"><span>🚨</span><div><h2>Alertas y avisos oficiales</h2><div class="card-kicker">Información oficial y alertas generadas por la plataforma</div></div></div>
   <div id="alertsStatus" class="status">Consultando alertas…</div>
-  <div id="officialAlerts" style="display:grid;gap:10px;margin-top:10px"></div>
-  <div id="systemAlerts" style="display:grid;gap:10px;margin-top:10px"></div>
+  <div id="officialAlerts" class="alert-list"></div>
+  <div id="systemAlerts" class="alert-list"></div>
 </section>
 
-<section class="card" style="margin-top:14px">
-  <h2>📰 Noticias de riesgo y emergencias</h2>
+<section class="card section-card">
+  <div class="card-title"><span>📰</span><div><h2>Noticias de riesgo y emergencias</h2><div class="card-kicker">Fuentes recientes relacionadas con Perú, lluvias e inundaciones</div></div></div>
   <div class="label" style="margin-bottom:10px">Búsqueda: Perú · lluvias · inundaciones · El Niño</div>
   <div id="news" class="news"><div class="label">Cargando noticias…</div></div>
 </section>
 
-<section class="card" style="margin-top:14px">
-  <h2>🗄️ Mediciones registradas en la nube</h2>
+<section class="card section-card">
+  <div class="card-title"><span>🗄️</span><div><h2>Mediciones registradas en la nube</h2><div class="card-kicker">Datos almacenados en DynamoDB y recuperados mediante API Gateway</div></div></div>
   <div id="measurements" class="status">Conecta la API para ver las mediciones guardadas.</div>
-  <table><thead><tr><th>Estación</th><th>Lluvia mm/h</th><th>Nivel de río m</th><th>Riesgo</th></tr></thead><tbody id="rows"></tbody></table>
+  <div class="table-wrap"><table><thead><tr><th>Estación</th><th>Lluvia mm/h</th><th>Nivel de río m</th><th>Riesgo</th></tr></thead><tbody id="rows"></tbody></table></div>
 </section>
 
 <footer>Proyecto académico de Computación en la Nube · Propuesta 1 · Las APIs externas determinan la disponibilidad y frecuencia real de actualización de sus fuentes.</footer>
@@ -149,7 +384,7 @@ async function loadDirectAPIs(){
   $('riskReason').textContent=rv.reason;
   const articles=n.articles||[];
   $('newsCount').textContent=articles.length;
-  $('news').innerHTML=articles.map(a=>{const level=classifyNews(a);return '<div class="news-item"><div><span class="news-level '+level.cls+'">'+level.label+'</span><a href="'+a.url+'" target="_blank" rel="noopener">'+(a.title||'Sin título')+'</a></div><div class="meta">'+(a.domain||a.source?.title||'fuente')+' · '+(a.seendate||a.publishedAt||'')+' · clasificación automática</div></div>';}).join('')||'<div class="label">No se encontraron noticias en la ventana reciente.</div>';
+  $('news').innerHTML=articles.map(a=>{const level=classifyNews(a);return '<div class="news-item"><div class="news-body"><div><span class="news-level '+level.cls+'">'+level.label+'</span> <a href="'+a.url+'" target="_blank" rel="noopener">'+(a.title||'Sin título')+'</a></div><div class="news-source">'+(a.domain||a.source?.title||'fuente')+' · '+(a.seendate||a.publishedAt||'')+' · clasificación automática</div></div><span style="font-size:14px">↗</span></div>';}).join('')||'<div class="empty">No se encontraron noticias recientes de riesgo para Perú.</div>';
 }
 
 async function loadAWS(){
