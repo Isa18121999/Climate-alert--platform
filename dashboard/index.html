@@ -244,6 +244,7 @@ footer{color:var(--muted);font-size:11px;padding:20px 3px 12px;text-align:center
   <div class="hero-controls">
     <input class="control" id="lat" value="-5.1945" aria-label="Latitud" placeholder="Latitud">
     <input class="control" id="lon" value="-80.6328" aria-label="Longitud" placeholder="Longitud">
+    <button class="primary-btn" onclick="useCurrentLocation()">📍 Mi ubicación</button>
     <button class="primary-btn" onclick="refreshAll()">↻ Actualizar datos</button>
   </div>
 
@@ -356,6 +357,37 @@ function classifyNews(a){
   return {label:'INFORMATIVA',cls:'info'};
 }
 
+let currentGeoLabel='';
+let currentGeoPermission='unknown';
+
+function useCurrentLocation(silent=false){
+  if(!navigator.geolocation){
+    if(!silent) $('locationTag').textContent='📍 Geolocalización no disponible en este navegador';
+    return;
+  }
+  if(!silent) $('locationTag').textContent='📍 Obteniendo ubicación del dispositivo…';
+  navigator.geolocation.getCurrentPosition(
+    pos=>{
+      const lat=Number(pos.coords.latitude), lon=Number(pos.coords.longitude);
+      $('lat').value=lat.toFixed(6);
+      $('lon').value=lon.toFixed(6);
+      currentGeoLabel=lat.toFixed(4)+' · '+lon.toFixed(4);
+      $('locationTag').textContent='📍 '+currentGeoLabel;
+      updateLocationName(lat,lon);
+      refreshAll();
+    },
+    err=>{
+      console.warn('Geolocalización:',err);
+      if(!silent){
+        const msg=err.code===1?'Permiso de ubicación denegado':err.code===2?'Ubicación no disponible':'Tiempo agotado al obtener ubicación';
+        $('locationTag').textContent='📍 '+msg+' · puedes usar las coordenadas manuales';
+      }
+      refreshAll();
+    },
+    {enableHighAccuracy:true,timeout:10000,maximumAge:60000}
+  );
+}
+
 let lastResolvedCoords='';
 let currentLocationLabel='Ubicación seleccionada';
 
@@ -452,24 +484,31 @@ async function loadDirectAPIs(){
   }
 
   try{
-    if(base){
-      const primary=await q(base+'/news?q='+newsQuery,9000);
-      if((primary.articles||[]).length) n=primary;
-      else throw new Error('AWS News devolvió 0 artículos');
-    }else{
-      throw new Error('Sin backend AWS');
-    }
+    const renderNews=await q('https://climate-alert-platform-api.onrender.com/news?q='+newsQuery,12000);
+    const renderArticles=Array.isArray(renderNews.articles)?renderNews.articles:[];
+    if(renderArticles.length) n=renderNews;
+    else throw new Error('Render News devolvió 0 artículos');
   }catch(e){
-    console.warn('AWS News no disponible:',e);
-    try{
-      n=await q('https://climate-alert-platform-api.onrender.com/news?q='+newsQuery,10000);
-    }catch(e2){
-      problems.push('Noticias Render: '+e2.message);
+    console.warn('Render News no disponible:',e);
+    if(base){
       try{
-        const newsUrl='https://news.google.com/rss/search?q='+newsQuery+'&hl=es-419&gl=PE&ceid=PE:es-419';
-        n=await q(newsUrl,10000);
+        const awsNews=await q(base+'/news?q='+newsQuery,9000);
+        const awsArticles=Array.isArray(awsNews.articles)?awsNews.articles:[];
+        if(awsArticles.length) n=awsNews;
+        else throw new Error('AWS News devolvió 0 artículos');
+      }catch(e2){
+        problems.push('Noticias AWS: '+e2.message);
+      }
+    }
+    if(!n){
+      try{
+        const gdeltUrl='https://api.gdeltproject.org/api/v2/doc/doc?query='+newsQuery+'&mode=ArtList&format=json&maxrecords=20&sort=HybridRel&timespan=24h&sourcelang=Spanish';
+        const gdeltNews=await q(gdeltUrl,12000);
+        const gdeltArticles=Array.isArray(gdeltNews.articles)?gdeltNews.articles:[];
+        if(gdeltArticles.length) n=gdeltNews;
+        else throw new Error('GDELT devolvió 0 artículos');
       }catch(e3){
-        problems.push('Noticias Google RSS: '+e3.message);
+        problems.push('Noticias GDELT: '+e3.message);
       }
     }
   }
@@ -591,7 +630,9 @@ $('lon').addEventListener('change', scheduleCoordinateRefresh);
 $('lat').addEventListener('blur', scheduleCoordinateRefresh);
 $('lon').addEventListener('blur', scheduleCoordinateRefresh);
 refreshAll();
+setTimeout(()=>useCurrentLocation(true),500);
 setInterval(refreshAll,60000);
+setInterval(()=>useCurrentLocation(true),300000);
 </script>
 </body>
 </html>
