@@ -5,7 +5,7 @@ Description: Propuesta 1 - Alerta temprana de lluvias extremas e inundaciones
 Globals:
   Function:
     Runtime: python3.13
-    Timeout: 15
+    Timeout: 30
     MemorySize: 256
     Environment:
       Variables:
@@ -17,79 +17,31 @@ Globals:
         DEFAULT_STATION_ID: "PIURA-001"
 
 Resources:
-  Api:
-    Type: AWS::Serverless::HttpApi
-    Properties:
-      CorsConfiguration:
-        AllowOrigins:
-          - '*'
-        AllowHeaders:
-          - content-type
-        AllowMethods:
-          - GET
-          - POST
-          - OPTIONS
-
   AlertFunction:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: climate-alert-platform-alert
       CodeUri: src/
       Handler: handler.app
       Role: arn:aws:iam::348802848943:role/LabRole
+      FunctionUrlConfig:
+        AuthType: NONE
+        InvokeMode: BUFFERED
+        Cors:
+          AllowOrigins:
+            - "*"
+          AllowMethods:
+            - GET
+            - POST
+            - OPTIONS
+          AllowHeaders:
+            - content-type
       Events:
         ScheduledMonitor:
           Type: Schedule
           Properties:
             Schedule: rate(15 minutes)
             Input: '{"action":"monitor"}'
-        PostMeasurement:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref Api
-            Path: /measurements
-            Method: POST
-        ListMeasurements:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref Api
-            Path: /measurements
-            Method: GET
-        ListAlerts:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref Api
-            Path: /alerts
-            Method: GET
-        Weather:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref Api
-            Path: /weather
-            Method: GET
-        Flood:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref Api
-            Path: /flood
-            Method: GET
-        News:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref Api
-            Path: /news
-            Method: GET
-        OfficialAlerts:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref Api
-            Path: /official-alerts
-            Method: GET
-        Health:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref Api
-            Path: /health
-            Method: GET
 
   MeasurementsTable:
     Type: AWS::DynamoDB::Table
@@ -127,9 +79,9 @@ Resources:
       TopicName: propuesta1-alertas
 
 Outputs:
-  ApiUrl:
-    Description: URL de la API
-    Value: !Sub 'https://${Api}.execute-api.${AWS::Region}.amazonaws.com'
+  FunctionUrl:
+    Description: URL publica de la Lambda para el dashboard
+    Value: !GetAtt AlertFunctionUrl.FunctionUrl
   TopicArn:
-    Description: ARN del tópico SNS
+    Description: ARN del topico SNS
     Value: !Ref AlertTopic
