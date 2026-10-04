@@ -321,8 +321,8 @@ footer{color:var(--muted);font-size:11px;padding:20px 3px 12px;text-align:center
 </section>
 
 <section class="card section-card">
-  <div class="card-title"><span>📰</span><div><h2>Noticias recientes · Perú</h2><div class="card-kicker">Fuentes recientes de todo el Perú relacionadas con lluvias, inundaciones y emergencias</div></div></div>
-  <div class="label" style="margin-bottom:10px">Noticias nacionales · lluvias · inundaciones · desbordes · huaicos · El Niño</div>
+  <div class="card-title"><span>📰</span><div><h2>Noticias recientes · Perú</h2><div class="card-kicker">Noticias recientes de todo el Perú</div></div></div>
+  <div class="label" style="margin-bottom:10px">Noticias nacionales recientes · todo el Perú</div>
   <div id="newsStatus" class="label" style="margin-top:10px">🟡 Buscando noticias recientes…</div>
   <div id="news" class="news"><div class="label">Cargando noticias…</div></div>
 </section>
@@ -361,7 +361,7 @@ function classifyNews(a){
   return {label:'INFORMATIVA',cls:'info'};
 }
 
-const NEWS_CACHE_KEY='climate_alert_news_v1';
+const NEWS_CACHE_KEY='climate_alert_news_all_v2';
 const NEWS_CACHE_MS=60*1000;
 let lastNewsArticles=[];
 let lastNewsAt=0;
@@ -544,7 +544,7 @@ async function loadDirectAPIs(){
   const base=api();
   const weatherDirect='https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,relative_humidity_2m,precipitation,rain,wind_speed_10m&forecast_days=1&timezone=UTC';
   const floodDirect='https://flood-api.open-meteo.com/v1/flood?latitude='+lat+'&longitude='+lon+'&daily=river_discharge,river_discharge_max&forecast_days=7&timezone=UTC';
-  const newsQuery=encodeURIComponent('Perú lluvias inundaciones desbordes huaicos El Niño');
+  const newsQuery=encodeURIComponent('Perú');
 
   let w=null, f=null, n=null;
   const problems=[];
