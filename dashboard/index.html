@@ -569,6 +569,24 @@ async function loadDirectAPIs(){
     }
   }
 
+  if(w){
+    const current=w.current||{};
+    $('temp').textContent=current.temperature_2m!=null?current.temperature_2m+' °C':'—';
+    $('rain').textContent=current.rain!=null?current.rain+' mm':'—';
+    $('precip').textContent=current.precipitation!=null?current.precipitation+' mm':'—';
+    $('humidity').textContent=current.relative_humidity_2m!=null?current.relative_humidity_2m+' %':'—';
+    $('wind').textContent=current.wind_speed_10m!=null?current.wind_speed_10m+' km/h':'—';
+  }
+
+  let discharge=[], maxs=[];
+  if(f){
+    const d=f.daily||{};
+    discharge=d.river_discharge||[];
+    maxs=d.river_discharge_max||[];
+    $('river').textContent=discharge.length?discharge[0]+' m³/s':'—';
+    $('riverMax').textContent=maxs.length?Math.max(...maxs)+' m³/s':'—';
+  }
+
   const shouldRefreshNews=!lastNewsArticles.length || (Date.now()-lastNewsAt>NEWS_CACHE_MS);
   if(shouldRefreshNews){
     try{
@@ -603,24 +621,6 @@ async function loadDirectAPIs(){
     if(n && Array.isArray(n.articles) && n.articles.length){
       saveNewsCache(n.articles);
     }
-  }
-
-  if(w){
-    const current=w.current||{};
-    $('temp').textContent=current.temperature_2m!=null?current.temperature_2m+' °C':'—';
-    $('rain').textContent=current.rain!=null?current.rain+' mm':'—';
-    $('precip').textContent=current.precipitation!=null?current.precipitation+' mm':'—';
-    $('humidity').textContent=current.relative_humidity_2m!=null?current.relative_humidity_2m+' %':'—';
-    $('wind').textContent=current.wind_speed_10m!=null?current.wind_speed_10m+' km/h':'—';
-  }
-
-  let discharge=[], maxs=[];
-  if(f){
-    const d=f.daily||{};
-    discharge=d.river_discharge||[];
-    maxs=d.river_discharge_max||[];
-    $('river').textContent=discharge.length?discharge[0]+' m³/s':'—';
-    $('riverMax').textContent=maxs.length?Math.max(...maxs)+' m³/s':'—';
   }
 
   if(w){
@@ -725,15 +725,21 @@ async function loadAWS(){
 }
 
 async function refreshAll(){
-  $('status').textContent='Consultando APIs externas…';
-  try{
-    await loadDirectAPIs();
+  $('status').textContent='Consultando datos…';
+
+  const directPromise=loadDirectAPIs();
+  const awsPromise=loadAWS();
+
+  const [directResult]=await Promise.allSettled([directPromise,awsPromise]);
+
+  if(directResult.status==='fulfilled'){
     $('updated').textContent=new Date().toLocaleString('es-PE');
-    $('status').textContent='APIs externas consultadas correctamente.';
-  }catch(e){
-    $('status').textContent='Error al consultar APIs externas: '+e.message;
+    if($('status').textContent==='Consultando datos…'){
+      $('status').textContent='Datos actualizados correctamente.';
+    }
+  }else{
+    $('status').textContent='Algunos datos externos no respondieron; se muestran los disponibles.';
   }
-  await loadAWS();
 }
 $('lat').addEventListener('change', scheduleCoordinateRefresh);
 $('lon').addEventListener('change', scheduleCoordinateRefresh);
