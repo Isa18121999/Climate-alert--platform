@@ -121,37 +121,54 @@ def _gdelt_live_rss(query: str) -> dict:
     }
 
 
+def _google_news_rss(query: str) -> dict:
+    params = {
+        "q": query,
+        "hl": "es-419",
+        "gl": "PE",
+        "ceid": "PE:es-419",
+    }
+    query_string = urlencode(params)
+    url = f"{GOOGLE_NEWS_RSS}?{query_string}"
+    request = Request(
+        url,
+        headers={"User-Agent": "propuesta1-alerta-temprana/1.0"},
+    )
+    with urlopen(request, timeout=10) as response:
+        root = ET.fromstring(response.read())
+
+    articles = []
+    for item in root.findall(".//item"):
+        title = item.findtext("title") or ""
+        link = item.findtext("link") or ""
+        pub_date = item.findtext("pubDate")
+        source = item.find("source")
+        source_name = source.text if source is not None else None
+        if not title or not link:
+            continue
+        articles.append({
+            "title": title,
+            "url": link,
+            "domain": source_name,
+            "language": "es",
+            "seendate": pub_date,
+            "socialimage": None,
+        })
+        if len(articles) >= 20:
+            break
+
+    return {
+        "source": "Google News RSS",
+        "source_url": url,
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+        "query": query,
+        "articles": articles,
+        "source_update_note": "Respaldo de noticias mediante Google News RSS para mantener visible información reciente cuando GDELT no responde.",
+    }
+
+
 def news(query: str = "Peru inundación lluvias El Niño") -> dict:
-    if NEWS_PROVIDER == "newsapi" and NEWS_API_KEY:
-        data = _get_json(
-            NEWS_API_URL,
-            {
-                "q": query,
-                "from": datetime.now(timezone.utc).date().isoformat(),
-                "sortBy": "publishedAt",
-                "language": "es",
-                "pageSize": 20,
-            },
-        )
-        articles = [
-            {
-                "title": x.get("title"),
-                "url": x.get("url"),
-                "domain": (x.get("source") or {}).get("name"),
-                "language": "es",
-                "seendate": x.get("publishedAt"),
-                "socialimage": x.get("urlToImage"),
-            }
-            for x in data.get("articles", [])
-        ]
-        return {
-            "source": "News API",
-            "source_url": NEWS_API_URL,
-            "fetched_at": datetime.now(timezone.utc).isoformat(),
-            "query": query,
-            "articles": articles,
-            "source_update_note": "La interfaz consulta cada minuto; la disponibilidad y latencia dependen del plan y de las fuentes indexadas.",
-        }
+    errors = []
 
     try:
         data = _get_json(
@@ -162,7 +179,7 @@ def news(query: str = "Peru inundación lluvias El Niño") -> dict:
                 "format": "json",
                 "maxrecords": 20,
                 "sort": "HybridRel",
-                "timespan": "15min",
+                "timespan": "24h",
                 "sourcelang": "spanish",
             },
             timeout=10,
@@ -179,18 +196,39 @@ def news(query: str = "Peru inundación lluvias El Niño") -> dict:
                     "socialimage": item.get("socialimage"),
                 }
             )
-        return {
-            "source": "GDELT DOC 2.0",
-            "source_url": GDELT_DOC,
-            "fetched_at": datetime.now(timezone.utc).isoformat(),
-            "query": query,
-            "articles": articles,
-            "source_update_note": "GDELT se utiliza como fuente principal de monitoreo de noticias.",
-        }
-    except HTTPError as exc:
-        if exc.code == 429:
-            return _gdelt_live_rss(query)
-        raise
-    except json.JSONDecodeError:
-        # Some upstream responses can be HTML/empty instead of JSON; use the live RSS fallback.
-        return _gdelt_live_rss(query)
+        if articles:
+            return {
+                "source": "GDELT DOC 2.0",
+                "source_url": GDELT_DOC,
+                "fetched_at": datetime.now(timezone.utc).isoformat(),
+                "query": query,
+                "articles": articles,
+                "source_update_note": "GDELT se utiliza como fuente principal de monitoreo de noticias.",
+            }
+        errors.append("GDELT sin resultados")
+    except Exception as exc:
+        errors.append(f"GDELT: {exc}")
+
+    try:
+        return _google_news_rss(query)
+    except Exception as exc:
+        errors.append(f"Google News RSS: {exc}")
+
+    try:
+        fallback = _gdelt_live_rss(query)
+        fallback["source_update_note"] = (
+            "Respaldo final de GDELT Article List RSS. "
+            + "; ".join(errors)
+        )
+        return fallback
+    except Exception as exc:
+        errors.append(f"GDELT RSS: {exc}")
+
+    return {
+        "source": "News fallback",
+        "source_url": GDELT_DOC,
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+        "query": query,
+        "articles": [],
+        "source_update_note": "No fue posible consultar las fuentes de noticias: " + "; ".join(errors),
+    }
