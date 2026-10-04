@@ -351,6 +351,47 @@ function classifyNews(a){
   return {label:'INFORMATIVA',cls:'info'};
 }
 
+const NEWS_CACHE_KEY='climate_alert_news_v1';
+const NEWS_CACHE_MS=10*60*1000;
+let lastNewsArticles=[];
+let lastNewsAt=0;
+
+function readNewsCache(){
+  try{
+    const raw=localStorage.getItem(NEWS_CACHE_KEY);
+    if(!raw) return;
+    const data=JSON.parse(raw);
+    if(Array.isArray(data.articles)&&data.articles.length){
+      lastNewsArticles=data.articles;
+      lastNewsAt=Number(data.savedAt||0);
+      renderNewsArticles(lastNewsArticles);
+    }
+  }catch(e){ console.warn('No se pudo leer la caché de noticias:',e); }
+}
+
+function saveNewsCache(articles){
+  if(!Array.isArray(articles)||!articles.length) return;
+  lastNewsArticles=articles;
+  lastNewsAt=Date.now();
+  try{
+    localStorage.setItem(NEWS_CACHE_KEY,JSON.stringify({
+      savedAt:lastNewsAt,
+      articles:articles.slice(0,20)
+    }));
+  }catch(e){ console.warn('No se pudo guardar la caché de noticias:',e); }
+}
+
+function renderNewsArticles(articles){
+  const list=Array.isArray(articles)?articles:[];
+  $('newsCount').textContent=list.length;
+  $('news').innerHTML=list.length
+    ? list.map(a=>{
+        const level=classifyNews(a);
+        return '<div class="news-item"><div class="news-body"><div><span class="news-level '+level.cls+'">'+level.label+'</span> <a href="'+(a.url||'#')+'" target="_blank" rel="noopener">'+(a.title||'Sin título')+'</a></div><div class="news-source">'+(a.domain||a.source?.title||'fuente')+' · '+(a.seendate||a.publishedAt||'')+' · clasificación automática</div></div><span style="font-size:14px">↗</span></div>';
+      }).join('')
+    : '<div class="empty">No se encontraron noticias recientes de riesgo para Perú.</div>';
+}
+
 let currentGeoLabel='';
 let currentGeoPermission='unknown';
 
@@ -483,33 +524,39 @@ async function loadDirectAPIs(){
     }
   }
 
-  try{
-    const renderNews=await q('https://climate-alert-platform-api.onrender.com/news?q='+newsQuery,12000);
-    const renderArticles=Array.isArray(renderNews.articles)?renderNews.articles:[];
-    if(renderArticles.length) n=renderNews;
-    else throw new Error('Render News devolvió 0 artículos');
-  }catch(e){
-    console.warn('Render News no disponible:',e);
-    if(base){
-      try{
-        const awsNews=await q(base+'/news?q='+newsQuery,9000);
-        const awsArticles=Array.isArray(awsNews.articles)?awsNews.articles:[];
-        if(awsArticles.length) n=awsNews;
-        else throw new Error('AWS News devolvió 0 artículos');
-      }catch(e2){
-        problems.push('Noticias AWS: '+e2.message);
+  const shouldRefreshNews=!lastNewsArticles.length || (Date.now()-lastNewsAt>NEWS_CACHE_MS);
+  if(shouldRefreshNews){
+    try{
+      const renderNews=await q('https://climate-alert-platform-api.onrender.com/news?q='+newsQuery,12000);
+      const renderArticles=Array.isArray(renderNews.articles)?renderNews.articles:[];
+      if(renderArticles.length) n=renderNews;
+      else throw new Error('Render News devolvió 0 artículos');
+    }catch(e){
+      console.warn('Render News no disponible:',e);
+      if(base){
+        try{
+          const awsNews=await q(base+'/news?q='+newsQuery,9000);
+          const awsArticles=Array.isArray(awsNews.articles)?awsNews.articles:[];
+          if(awsArticles.length) n=awsNews;
+          else throw new Error('AWS News devolvió 0 artículos');
+        }catch(e2){
+          problems.push('Noticias AWS: '+e2.message);
+        }
+      }
+      if(!n){
+        try{
+          const gdeltUrl='https://api.gdeltproject.org/api/v2/doc/doc?query='+newsQuery+'&mode=ArtList&format=json&maxrecords=20&sort=HybridRel&timespan=24h&sourcelang=Spanish';
+          const gdeltNews=await q(gdeltUrl,12000);
+          const gdeltArticles=Array.isArray(gdeltNews.articles)?gdeltNews.articles:[];
+          if(gdeltArticles.length) n=gdeltNews;
+          else throw new Error('GDELT devolvió 0 artículos');
+        }catch(e3){
+          problems.push('Noticias GDELT: '+e3.message);
+        }
       }
     }
-    if(!n){
-      try{
-        const gdeltUrl='https://api.gdeltproject.org/api/v2/doc/doc?query='+newsQuery+'&mode=ArtList&format=json&maxrecords=20&sort=HybridRel&timespan=24h&sourcelang=Spanish';
-        const gdeltNews=await q(gdeltUrl,12000);
-        const gdeltArticles=Array.isArray(gdeltNews.articles)?gdeltNews.articles:[];
-        if(gdeltArticles.length) n=gdeltNews;
-        else throw new Error('GDELT devolvió 0 artículos');
-      }catch(e3){
-        problems.push('Noticias GDELT: '+e3.message);
-      }
+    if(n && Array.isArray(n.articles) && n.articles.length){
+      saveNewsCache(n.articles);
     }
   }
 
@@ -538,14 +585,15 @@ async function loadDirectAPIs(){
     $('riskReason').textContent=rv.reason;
   }
 
-  const articles=(n&&n.articles)||[];
-  $('newsCount').textContent=articles.length;
-  $('news').innerHTML=articles.length
-    ? articles.map(a=>{
-        const level=classifyNews(a);
-        return '<div class="news-item"><div class="news-body"><div><span class="news-level '+level.cls+'">'+level.label+'</span> <a href="'+(a.url||'#')+'" target="_blank" rel="noopener">'+(a.title||'Sin título')+'</a></div><div class="news-source">'+(a.domain||a.source?.title||'fuente')+' · '+(a.seendate||a.publishedAt||'')+' · clasificación automática</div></div><span style="font-size:14px">↗</span></div>';
-      }).join('')
-    : '<div class="empty">No se encontraron noticias recientes de riesgo para Perú.</div>';
+  if(lastNewsArticles.length){
+    renderNewsArticles(lastNewsArticles);
+  }else if(n && Array.isArray(n.articles) && n.articles.length){
+    saveNewsCache(n.articles);
+    renderNewsArticles(n.articles);
+  }else{
+    renderNewsArticles([]);
+  }
+
 
   if(!w && !f){
     throw new Error('No fue posible consultar Weather ni Flood. '+problems.join(' | '));
@@ -629,6 +677,7 @@ $('lat').addEventListener('change', scheduleCoordinateRefresh);
 $('lon').addEventListener('change', scheduleCoordinateRefresh);
 $('lat').addEventListener('blur', scheduleCoordinateRefresh);
 $('lon').addEventListener('blur', scheduleCoordinateRefresh);
+readNewsCache();
 refreshAll();
 setTimeout(()=>useCurrentLocation(false),700);
 setInterval(refreshAll,60000);
