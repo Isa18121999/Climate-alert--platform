@@ -314,6 +314,7 @@ footer{color:var(--muted);font-size:11px;padding:20px 3px 12px;text-align:center
 <section class="card section-card">
   <div class="card-title"><span>📰</span><div><h2>Noticias recientes · Perú</h2><div class="card-kicker">Fuentes recientes de todo el Perú relacionadas con lluvias, inundaciones y emergencias</div></div></div>
   <div class="label" style="margin-bottom:10px">Noticias nacionales · lluvias · inundaciones · desbordes · huaicos · El Niño</div>
+  <div id="newsStatus" class="label" style="margin-top:10px">🟡 Buscando noticias recientes…</div>
   <div id="news" class="news"><div class="label">Cargando noticias…</div></div>
 </section>
 
@@ -352,7 +353,7 @@ function classifyNews(a){
 }
 
 const NEWS_CACHE_KEY='climate_alert_news_v1';
-const NEWS_CACHE_MS=10*60*1000;
+const NEWS_CACHE_MS=60*1000;
 let lastNewsArticles=[];
 let lastNewsAt=0;
 
@@ -384,6 +385,11 @@ function saveNewsCache(articles){
 function renderNewsArticles(articles){
   const list=Array.isArray(articles)?articles:[];
   $('newsCount').textContent=list.length;
+  if(list.length && lastNewsAt){
+    const seconds=Math.max(0,Math.round((Date.now()-lastNewsAt)/1000));
+    const stamp=seconds<60?'actualizadas hace '+seconds+' s':'actualizadas hace '+Math.round(seconds/60)+' min';
+    $('newsStatus').textContent='🟢 Noticias en vivo · '+stamp+' · próxima actualización en menos de 60 s';
+  }
   $('news').innerHTML=list.length
     ? list.map(a=>{
         const level=classifyNews(a);
