@@ -67,42 +67,43 @@ def flood(lat: float, lon: float) -> dict:
     }
 
 
-def _google_news_rss(query: str) -> dict:
-    # Public RSS search feed; used as a fallback when GDELT rate-limits requests.
-    params = {
-        "q": f"{query} when:1h",
-        "hl": "es-419",
-        "gl": "PE",
-        "ceid": "PE:es-419",
-    }
-    xml_url = GOOGLE_NEWS_RSS
-    query_string = urlencode(params)
+def _gdelt_live_rss(query: str) -> dict:
+    # GDELT Article List RSS is a rolling live feed updated every minute.
+    # We filter the feed locally because the DOC JSON endpoint may rate-limit bursts.
+    url = os.getenv("GDELT_GAL_RSS", "https://data.gdeltproject.org/gdeltv3/gal/feed.rss")
     request = Request(
-        f"{xml_url}?{query_string}",
+        url,
         headers={"User-Agent": "propuesta1-alerta-temprana/1.0"},
     )
     with urlopen(request, timeout=10) as response:
         root = ET.fromstring(response.read())
 
+    terms = [x.strip().lower() for x in query.replace(",", " ").split() if x.strip()]
     articles = []
-    for item in root.findall(".//item")[:20]:
+    for item in root.findall(".//item"):
+        title = item.findtext("title") or ""
+        haystack = title.lower()
+        if terms and not any(term in haystack for term in terms):
+            continue
         source = item.find("source")
         articles.append({
-            "title": item.findtext("title"),
+            "title": title,
             "url": item.findtext("link"),
             "domain": source.text if source is not None else None,
             "language": "es",
             "seendate": item.findtext("pubDate"),
             "socialimage": None,
         })
+        if len(articles) >= 20:
+            break
 
     return {
-        "source": "Google News RSS (fallback)",
-        "source_url": f"{xml_url}?{query_string}",
+        "source": "GDELT Article List RSS (fallback)",
+        "source_url": url,
         "fetched_at": datetime.now(timezone.utc).isoformat(),
         "query": query,
         "articles": articles,
-        "source_update_note": "Fuente alternativa activada cuando GDELT responde con limitación de solicitudes (HTTP 429).",
+        "source_update_note": "Fallback a GDELT Article List RSS. El feed tiene una ventana móvil de aproximadamente 15 minutos y se actualiza cada 60 segundos.",
     }
 
 
@@ -174,7 +175,7 @@ def news(query: str = "Peru inundación lluvias El Niño") -> dict:
         }
     except HTTPError as exc:
         if exc.code == 429:
-            return _google_news_rss(query)
+            return _gdelt_live_rss(query)
         raise
     except json.JSONDecodeError:
         # Some upstream responses can be HTML/empty instead of JSON; use RSS fallback.
