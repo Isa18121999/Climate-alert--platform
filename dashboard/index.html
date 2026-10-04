@@ -31,7 +31,7 @@ footer{color:var(--muted);font-size:12px;padding:18px 3px}
   <div class="toolbar">
     <input id="lat" value="-5.1945" aria-label="Latitud" placeholder="Latitud">
     <input id="lon" value="-80.6328" aria-label="Longitud" placeholder="Longitud">
-    <input id="api" value="https://climate-alert-platform-api.onrender.com" aria-label="URL del backend" placeholder="URL del backend API">
+    <input id="api" value="https://18mrn74312.execute-api.us-east-1.amazonaws.com" aria-label="URL del backend AWS" placeholder="URL del backend AWS">
     <button onclick="refreshAll()">Actualizar ahora</button>
   </div>
   <div class="live"><span class="dot"></span> Datos externos consultados en vivo · interfaz actualizada cada 60 segundos</div>
@@ -62,7 +62,7 @@ footer{color:var(--muted);font-size:12px;padding:18px 3px}
 
   <div class="card">
     <h2>🚨 Estado del sistema</h2>
-    <div id="backend" class="status">El backend AWS aún no está conectado.</div>
+    <div id="backend" class="status">Backend AWS: API Gateway + Lambda + DynamoDB + SNS.</div>
     <div style="margin-top:13px">
       <div class="label">Nivel de riesgo calculado por el MVP</div>
       <div id="risk" class="value">—</div>
