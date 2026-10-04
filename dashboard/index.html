@@ -687,6 +687,9 @@ async function loadAWS(){
     const official=officialRes.status==='fulfilled'?officialRes.value:{alerts:[]};
     const officialItems=official.alerts||[];
     const generatedItems=(a.items||[]).filter(x=>x.alert_type==='RIESGO_CALCULADO');
+    const currentOfficial=officialItems.filter(x=>x.status==='ACTUAL' || x.is_current===true);
+    const pastOfficial=officialItems.filter(x=>x.status==='PASADO');
+
     $('alertsStatus').textContent='SENAMHI: '+currentOfficial.length+' vigentes · '+pastOfficial.length+' pasados · alertas calculadas: '+generatedItems.length;
 
     const levelClass=level=>{
@@ -696,8 +699,6 @@ async function loadAWS(){
       if(x.includes('AMARILLO')||x.includes('MEDIO')) return 'medium';
       return '';
     };
-    const currentOfficial=officialItems.filter(x=>x.status==='ACTUAL' || x.is_current===true);
-    const pastOfficial=officialItems.filter(x=>x.status==='PASADO');
 
     const renderOfficial=(items, past=false)=>items.slice(0,12).map(x=>{
       const cls=levelClass(x.level);
