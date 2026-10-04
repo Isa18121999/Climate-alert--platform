@@ -358,16 +358,27 @@ function classifyNews(a){
 
 let lastResolvedCoords='';
 let currentLocationLabel='Ubicación seleccionada';
+
 async function updateLocationName(latValue, lonValue){
   const latNum=Number(latValue), lonNum=Number(lonValue);
   if(!Number.isFinite(latNum)||!Number.isFinite(lonNum)) return currentLocationLabel;
   if(latNum < -90 || latNum > 90 || lonNum < -180 || lonNum > 180) return currentLocationLabel;
+
   const key=latNum.toFixed(6)+','+lonNum.toFixed(6);
-  $('locationTag').textContent='📍 Buscando ubicación…';
+  if(key===lastResolvedCoords){
+    $('locationTag').textContent='📍 '+currentLocationLabel;
+    return currentLocationLabel;
+  }
+
+  // No bloquear el dashboard esperando la geocodificación.
+  currentLocationLabel=latNum.toFixed(4)+' · '+lonNum.toFixed(4);
+  $('locationTag').textContent='📍 '+currentLocationLabel;
+
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),5000);
   try{
-    if(key===lastResolvedCoords) return currentLocationLabel;
     const url='https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&accept-language=es&zoom=14&lat='+encodeURIComponent(latNum)+'&lon='+encodeURIComponent(lonNum);
-    const r=await fetch(url,{headers:{'Accept':'application/json'}});
+    const r=await fetch(url,{signal:controller.signal});
     if(!r.ok) throw new Error('HTTP '+r.status);
     const data=await r.json();
     const a=data.address||{};
@@ -381,14 +392,14 @@ async function updateLocationName(latValue, lonValue){
     if(region && region!==locality && region!==district) parts.push(region);
     if(country) parts.push(country);
     currentLocationLabel=parts.length?parts.join(', '):(latNum.toFixed(4)+' · '+lonNum.toFixed(4));
+  }catch(e){
+    // Si Nominatim falla o tarda, las coordenadas siguen siendo una ubicación válida.
+  }finally{
+    clearTimeout(timer);
     $('locationTag').textContent='📍 '+currentLocationLabel;
     lastResolvedCoords=key;
-    return currentLocationLabel;
-  }catch(e){
-    currentLocationLabel=latNum.toFixed(4)+' · '+lonNum.toFixed(4);
-    $('locationTag').textContent='📍 '+currentLocationLabel;
-    return currentLocationLabel;
   }
+  return currentLocationLabel;
 }
 
 let coordinateTimer=null;
@@ -410,7 +421,7 @@ async function loadDirectAPIs(){
   }
 
   const lat=encodeURIComponent(latValue), lon=encodeURIComponent(lonValue);
-  await updateLocationName(latValue, lonValue);
+  updateLocationName(latValue, lonValue);
 
   const base=api();
   const weatherDirect='https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,relative_humidity_2m,precipitation,rain,wind_speed_10m&forecast_days=1&timezone=UTC';
