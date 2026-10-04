@@ -141,6 +141,29 @@ def run_monitor() -> dict:
     result = evaluate_risk(rain, river)
     created = []
 
+    # Registrar cada monitoreo programado en DynamoDB para que el historial
+    # de mediciones no dependa únicamente de envíos manuales desde el dashboard.
+    measurement_id = f"{datetime.now(timezone.utc).isoformat()}#{uuid.uuid4().hex[:8]}"
+    measurement = {
+        "station_id": station_id,
+        "measurement_id": measurement_id,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "rain_mm_h": Decimal(str(rain)),
+        "river_level_m": Decimal(str(river)),
+        "risk_level": result.level,
+        "risk_score": result.score,
+        "risk_reasons": result.reasons,
+        "location": {
+            "lat": Decimal(str(lat)),
+            "lon": Decimal(str(lon)),
+        },
+        "source": "monitor_automatico",
+    }
+    try:
+        measurements.put_item(Item=measurement)
+    except Exception as exc:
+        print(f"No se pudo guardar la medición automática: {exc}")
+
     if result.level in {"ALTO", "CRITICO"}:
         bucket = datetime.now(timezone.utc).strftime("%Y%m%d%H")
         alert_id = f"risk-{station_id}-{bucket}"
