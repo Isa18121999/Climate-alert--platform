@@ -246,7 +246,7 @@ footer{color:var(--muted);font-size:11px;padding:20px 3px 12px;text-align:center
 
   <div class="hero-footer">
     <div class="hero-note">Monitoreo meteorológico, hidrológico, noticias y alertas en una sola vista · actualización automática cada 60 segundos</div>
-    <div class="location-tag">📍 Piura · Perú</div>
+    <div class="location-tag" id="locationTag">📍 Ubicación seleccionada</div>
   </div>
 
   <details class="config">
@@ -354,7 +354,9 @@ function classifyNews(a){
 }
 
 async function loadDirectAPIs(){
-  const lat=encodeURIComponent($('lat').value),lon=encodeURIComponent($('lon').value);
+  const latValue=$('lat').value, lonValue=$('lon').value;
+  const lat=encodeURIComponent(latValue),lon=encodeURIComponent(lonValue);
+  $('locationTag').textContent='📍 '+Number(latValue).toFixed(4)+' · '+Number(lonValue).toFixed(4);
   const base=api();
   let w,f,n;
   if(base){
