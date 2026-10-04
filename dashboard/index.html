@@ -159,18 +159,27 @@ async function loadAWS(){
     return;
   }
   try{
-    const [m,a,official,h]=await Promise.all([
+    const results = await Promise.allSettled([
       q(api()+'/measurements'),
       q(api()+'/alerts'),
       q(api()+'/official-alerts'),
       q(api()+'/health')
     ]);
+    const [mRes,aRes,officialRes,hRes]=results;
+    const h=hRes.status==='fulfilled'?hRes.value:{provider:'AWS'};
     const provider=h.provider||'backend cloud';
     $('backend').textContent='Backend conectado: '+provider+' · AWS API Gateway + Lambda + DynamoDB + SNS.';
-    const items=m.items||[];
-    $('measurements').textContent=items.length+' mediciones recibidas desde DynamoDB.';
-    $('rows').innerHTML=items.slice(0,10).map(x=>'<tr><td>'+(x.station_id||'—')+'</td><td>'+((x.rain_mm_h??'—'))+'</td><td>'+((x.river_level_m??'—'))+'</td><td>'+riskBadge(x.risk_level||'—')+'</td></tr>').join('');
+    if(mRes.status==='fulfilled'){
+      const m=mRes.value;
+      const items=m.items||[];
+      $('measurements').textContent=items.length+' mediciones recibidas desde DynamoDB.';
+      $('rows').innerHTML=items.slice(0,10).map(x=>'<tr><td>'+(x.station_id||'—')+'</td><td>'+((x.rain_mm_h??'—'))+'</td><td>'+((x.river_level_m??'—'))+'</td><td>'+riskBadge(x.risk_level||'—')+'</td></tr>').join('');
+    }else{
+      $('measurements').textContent='No se pudieron consultar las mediciones de DynamoDB.';
+    }
 
+    const a=aRes.status==='fulfilled'?aRes.value:{items:[]};
+    const official=officialRes.status==='fulfilled'?officialRes.value:{alerts:[]};
     const officialItems=official.alerts||[];
     const generatedItems=(a.items||[]).filter(x=>x.alert_type==='RIESGO_CALCULADO');
     $('alertsStatus').textContent='SENAMHI: '+officialItems.length+' avisos relevantes · alertas calculadas: '+generatedItems.length+' · última consulta '+new Date().toLocaleString('es-PE');
