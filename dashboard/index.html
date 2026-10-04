@@ -425,11 +425,7 @@ async function saveCurrentMeasurement(latNumber,lonNumber,rainValue,riverValue){
 function renderNewsArticles(articles){
   const list=Array.isArray(articles)?articles:[];
   $('newsCount').textContent=list.length;
-  if(list.length && lastNewsAt){
-    const seconds=Math.max(0,Math.round((Date.now()-lastNewsAt)/1000));
-    const stamp=seconds<60?'actualizadas hace '+seconds+' s':'actualizadas hace '+Math.round(seconds/60)+' min';
-    $('newsStatus').textContent='🟢 Noticias en vivo · '+stamp+' · próxima actualización en menos de 60 s';
-  }
+  if(list.length && $('newsStatus')) $('newsStatus').textContent='🟢 Noticias en vivo';
   $('news').innerHTML=list.length
     ? list.map(a=>{
         const level=classifyNews(a);
