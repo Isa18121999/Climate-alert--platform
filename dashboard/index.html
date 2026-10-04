@@ -550,30 +550,30 @@ async function loadDirectAPIs(){
   const problems=[];
 
   try{
-    w=await q(weatherDirect,10000);
+    w=await q('https://climate-alert-platform-api.onrender.com/weather?lat='+lat+'&lon='+lon,8000);
   }catch(e){
-    problems.push('Weather directo: '+e.message);
+    problems.push('Weather Render: '+e.message);
     try{
-      w=await q('https://climate-alert-platform-api.onrender.com/weather?lat='+lat+'&lon='+lon,10000);
+      w=await q(weatherDirect,8000);
     }catch(e2){
-      problems.push('Weather Render: '+e2.message);
+      problems.push('Weather directo: '+e2.message);
       if(base){
-        try{ w=await q(base+'/weather?lat='+lat+'&lon='+lon,10000); }
+        try{ w=await q(base+'/weather?lat='+lat+'&lon='+lon,8000); }
         catch(e3){ problems.push('Weather AWS: '+e3.message); }
       }
     }
   }
 
   try{
-    f=await q(floodDirect,10000);
+    f=await q('https://climate-alert-platform-api.onrender.com/flood?lat='+lat+'&lon='+lon,8000);
   }catch(e){
-    problems.push('Flood directo: '+e.message);
+    problems.push('Flood Render: '+e.message);
     try{
-      f=await q('https://climate-alert-platform-api.onrender.com/flood?lat='+lat+'&lon='+lon,10000);
+      f=await q(floodDirect,8000);
     }catch(e2){
-      problems.push('Flood Render: '+e2.message);
+      problems.push('Flood directo: '+e2.message);
       if(base){
-        try{ f=await q(base+'/flood?lat='+lat+'&lon='+lon,10000); }
+        try{ f=await q(base+'/flood?lat='+lat+'&lon='+lon,8000); }
         catch(e3){ problems.push('Flood AWS: '+e3.message); }
       }
     }
