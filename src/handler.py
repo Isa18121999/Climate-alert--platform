@@ -74,6 +74,13 @@ def ingest_measurement(data: dict) -> dict:
     result = evaluate_risk(rain, river)
     measurement_id = f"{timestamp}#{uuid.uuid4().hex[:8]}"
 
+    location = data.get("location", {}) or {}
+    if isinstance(location, dict):
+        location = {
+            key: Decimal(str(value)) if isinstance(value, float) else value
+            for key, value in location.items()
+        }
+
     item = {
         "station_id": station_id,
         "measurement_id": measurement_id,
@@ -83,7 +90,7 @@ def ingest_measurement(data: dict) -> dict:
         "risk_level": result.level,
         "risk_score": result.score,
         "risk_reasons": result.reasons,
-        "location": data.get("location", {}),
+        "location": location,
     }
     measurements.put_item(Item=item)
 
