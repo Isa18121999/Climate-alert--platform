@@ -176,3 +176,6 @@ def news(query: str = "Peru inundación lluvias El Niño") -> dict:
         if exc.code == 429:
             return _google_news_rss(query)
         raise
+    except json.JSONDecodeError:
+        # Some upstream responses can be HTML/empty instead of JSON; use RSS fallback.
+        return _google_news_rss(query)
