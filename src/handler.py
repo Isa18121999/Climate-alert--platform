@@ -214,13 +214,15 @@ def run_monitor() -> dict:
         try:
             alerts.put_item(Item=alert, ConditionExpression="attribute_not_exists(alert_id)")
             created.append(alert)
-            topic_arn = os.getenv("SNS_TOPIC_ARN")
-            if topic_arn:
-                sns.publish(
-                    TopicArn=topic_arn,
-                    Subject=f"Aviso SENAMHI {alert['level']}",
-                    Message=json.dumps(alert, ensure_ascii=False),
-                )
+            # Solo enviar una alarma cuando el aviso oficial está vigente ahora.
+            if item.get("status") == "ACTUAL":
+                topic_arn = os.getenv("SNS_TOPIC_ARN")
+                if topic_arn:
+                    sns.publish(
+                        TopicArn=topic_arn,
+                        Subject=f"Alarma SENAMHI {alert['level']} - {item.get('title', 'Aviso oficial')}",
+                        Message=json.dumps(alert, ensure_ascii=False),
+                    )
         except Exception as exc:
             if "ConditionalCheckFailed" not in str(exc):
                 raise
