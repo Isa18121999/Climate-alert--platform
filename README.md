@@ -137,17 +137,17 @@ Este repositorio implementa un **MVP demostrable** de la propuesta: ingestión, 
 
 El frontend consume el backend cloud para las rutas de clima, caudal y noticias. También se mantienen las integraciones directas documentadas como respaldo técnico.
 
-> Nota: esta versión usa Render para demostrar el despliegue web/API. La plantilla AWS SAM permanece en `template.yaml` para el despliegue equivalente sobre AWS cuando se disponga de credenciales/permisos AWS.
+> Nota: esta versión usa Render para demostrar el despliegue web/API. La plantilla AWS SAM en `template.yaml` está desplegada en la cuenta académica AWS del proyecto.
 
 
 ## Despliegue AWS activo
 
-- API Gateway: https://18mrn74312.execute-api.us-east-1.amazonaws.com
+- API Gateway activo: https://kz34irut7h.execute-api.us-east-1.amazonaws.com
 - Región: us-east-1
 - Stack CloudFormation: climate-alert-platform
 - Lambda: AlertFunction
 - Persistencia: DynamoDB
 - Notificaciones: Amazon SNS
-- Monitor programado: EventBridge cada 15 minutos
+- Notificaciones: SNS por correo (suscripción confirmada)
 
 La plantilla usa el rol existente LabRole del entorno académico AWS para evitar requerir iam:CreateRole.
