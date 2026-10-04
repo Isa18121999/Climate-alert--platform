@@ -10,6 +10,65 @@ from bs4 import BeautifulSoup
 SENAMHI_ALERTS_URL = "https://web2.senamhi.gob.pe/?p=avisos"
 SENAMHI_SHORT_TERM_RAIN_URL = "https://www.senamhi.gob.pe/servicios/main.php?dp=lima&p=aviso-24H"
 
+MONTHS_ES = {
+    "ene": 1, "enero": 1, "feb": 2, "febrero": 2, "mar": 3, "marzo": 3,
+    "abr": 4, "abril": 4, "may": 5, "mayo": 5, "jun": 6, "junio": 6,
+    "jul": 7, "julio": 7, "ago": 8, "agosto": 8, "sep": 9, "sept": 9, "septiembre": 9,
+    "oct": 10, "octubre": 10, "nov": 11, "noviembre": 11, "dic": 12, "diciembre": 12,
+}
+
+
+def _parse_datetime(value: str) -> datetime | None:
+    if not value:
+        return None
+    text = value.strip().lower()
+    text = re.sub(r"\s+", " ", text)
+    for fmt in (
+        "%d/%m/%Y %H:%M", "%d-%m-%Y %H:%M", "%d/%m/%Y", "%d-%m-%Y",
+        "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M:%S",
+    ):
+        try:
+            return datetime.strptime(text[:19], fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            pass
+
+    match = re.search(r"(\d{1,2})\s+de\s+([a-záéíóú]+)\s+(?:de\s+)?(\d{4})(?:\s+(\d{1,2}):(\d{2}))?", text)
+    if match:
+        day, month_name, year, hour, minute = match.groups()
+        month = MONTHS_ES.get(month_name)
+        if month:
+            return datetime(
+                int(year), month, int(day), int(hour or 0), int(minute or 0),
+                tzinfo=timezone.utc,
+            )
+    return None
+
+
+def _alert_status(alert: dict, now: datetime) -> str:
+    start = _parse_datetime(alert.get("start_at", ""))
+    end = _parse_datetime(alert.get("end_at", ""))
+
+    if start and end:
+        if start <= now <= end:
+            return "ACTUAL"
+        if now < start:
+            return "PROXIMO"
+        return "PASADO"
+
+    if start:
+        duration = str(alert.get("duration", "")).lower()
+        if "24" in duration:
+            inferred_end = start + __import__("datetime").timedelta(hours=24)
+            if start <= now <= inferred_end:
+                return "ACTUAL"
+            if now < start:
+                return "PROXIMO"
+            return "PASADO"
+        return "ACTUAL" if start <= now else "PROXIMO"
+
+    return "SIN_FECHA"
+
+
 RELEVANT_TERMS = (
     "lluvia",
     "precipit",
@@ -149,7 +208,11 @@ def senamhi_alerts() -> dict:
             errors.append(f"{label}: {exc}")
 
     dedup: dict[str, dict] = {}
+    now_dt = datetime.now(timezone.utc)
     for alert in alerts:
+        status = _alert_status(alert, now_dt)
+        alert["status"] = status
+        alert["is_current"] = status == "ACTUAL"
         dedup[alert["id"]] = alert
 
     result = {
