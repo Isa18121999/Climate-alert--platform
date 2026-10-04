@@ -313,7 +313,10 @@ footer{color:var(--muted);font-size:11px;padding:20px 3px 12px;text-align:center
 <section class="card section-card">
   <div class="card-title"><span>🚨</span><div><h2>Alertas y avisos oficiales</h2><div class="card-kicker">Información oficial y alertas generadas por la plataforma</div></div></div>
   <div id="alertsStatus" class="status">Consultando alertas…</div>
+  <div id="currentOfficialTitle" class="label" style="margin-top:12px">🔴 Avisos actuales</div>
   <div id="officialAlerts" class="alert-list"></div>
+  <div id="pastOfficialTitle" class="label" style="margin-top:16px">🕘 Avisos pasados</div>
+  <div id="pastOfficialAlerts" class="alert-list"></div>
   <div id="systemAlerts" class="alert-list"></div>
 </section>
 
@@ -684,7 +687,7 @@ async function loadAWS(){
     const official=officialRes.status==='fulfilled'?officialRes.value:{alerts:[]};
     const officialItems=official.alerts||[];
     const generatedItems=(a.items||[]).filter(x=>x.alert_type==='RIESGO_CALCULADO');
-    $('alertsStatus').textContent='SENAMHI: '+officialItems.length+' avisos relevantes · alertas calculadas: '+generatedItems.length+' · última consulta '+new Date().toLocaleString('es-PE');
+    $('alertsStatus').textContent='SENAMHI: '+currentOfficial.length+' vigentes · '+pastOfficial.length+' pasados · alertas calculadas: '+generatedItems.length;
 
     const levelClass=level=>{
       const x=(level||'').toUpperCase();
@@ -693,11 +696,19 @@ async function loadAWS(){
       if(x.includes('AMARILLO')||x.includes('MEDIO')) return 'medium';
       return '';
     };
-    const officialHtml=officialItems.slice(0,8).map(x=>{
+    const currentOfficial=officialItems.filter(x=>x.status==='ACTUAL' || x.is_current===true);
+    const pastOfficial=officialItems.filter(x=>x.status==='PASADO');
+
+    const renderOfficial=(items, past=false)=>items.slice(0,12).map(x=>{
       const cls=levelClass(x.level);
-      return '<div class="alert-card official '+cls+'"><div><span class="badge '+(cls==='critical'?'danger':cls==='high'?'danger':cls==='medium'?'warn':'ok')+'">'+(x.level||'INFORMACION')+'</span> <span class="alert-title">'+(x.title||'Aviso oficial SENAMHI')+'</span></div><div class="alert-meta">SENAMHI · N.º '+(x.number||'—')+' · Inicio: '+(x.start_at||'—')+' · Fin: '+(x.end_at||'—')+'</div><a class="alert-link" href="'+(x.url||'https://www.senamhi.gob.pe/?p=avisos')+'" target="_blank" rel="noopener">Ver aviso oficial</a></div>';
-    }).join('');
-    $('officialAlerts').innerHTML=officialHtml||'<div class="empty">No se encontraron avisos oficiales relacionados con lluvias, inundaciones, crecidas o quebradas.</div>';
+      const badgeCls=cls==='critical'?'danger':cls==='high'?'danger':cls==='medium'?'warn':'ok';
+      const statusLabel=past?'FINALIZADO':'ACTUAL';
+      return '<div class="alert-card official '+cls+'"><div><span class="badge '+badgeCls+'">'+(past?'HISTÓRICO':statusLabel)+'</span> <span class="alert-title">'+(x.title||'Aviso oficial SENAMHI')+'</span></div><div class="alert-meta">SENAMHI · N.º '+(x.number||'—')+' · Inicio: '+(x.start_at||'—')+' · Fin: '+(x.end_at||'—')+(past?' · Aviso pasado':' · Aviso vigente')+'</div><a class="alert-link" href="'+(x.url||'https://www.senamhi.gob.pe/?p=avisos')+'" target="_blank" rel="noopener">Ver aviso oficial</a></div>').join('');
+
+    $('officialAlerts').innerHTML=renderOfficial(currentOfficial)||'<div class="empty">No hay avisos oficiales vigentes en este momento.</div>';
+    $('pastOfficialAlerts').innerHTML=renderOfficial(pastOfficial,true)||'<div class="empty">No hay avisos oficiales pasados disponibles.</div>';
+    $('currentOfficialTitle').style.display='block';
+    $('pastOfficialTitle').style.display='block';
 
     const generatedHtml=generatedItems.slice(0,8).map(x=>{
       const cls=levelClass(x.level);
