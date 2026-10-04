@@ -238,7 +238,7 @@ footer{color:var(--muted);font-size:11px;padding:20px 3px 12px;text-align:center
         <p class="hero-sub">Sistema de alerta temprana para lluvias extremas e inundaciones</p>
       </div>
     </div>
-    <div class="live-pill"><span class="dot"></span> Sistema activo</div>
+    <div class="live-pill"><span class="dot"></span> AWS conectado</div>
   </div>
 
   <div class="hero-controls">
@@ -249,48 +249,50 @@ footer{color:var(--muted);font-size:11px;padding:20px 3px 12px;text-align:center
   </div>
 
   <div class="hero-footer">
-    <div class="hero-note">Monitoreo meteorológico, hidrológico, noticias y alertas en una sola vista · actualización automática</div>
+    <div class="hero-note">Monitoreo meteorológico, hidrológico, noticias y alertas en una sola vista · actualización automática cada 60 segundos</div>
     <div class="location-tag" id="locationTag">📍 Ubicación seleccionada</div>
   </div>
 
-  
-</section>
+  </section>
 
 <section class="summary">
   <div class="metric">
     <div class="metric-top"><div><div class="label">Temperatura</div><div id="temp" class="value">—</div></div><div class="metric-icon">🌡️</div></div>
-    <div class="source">Datos meteorológicos actuales</div>
+    <div class="source">Open-Meteo Weather API</div>
   </div>
   <div class="metric">
     <div class="metric-top"><div><div class="label">Lluvia actual</div><div id="rain" class="value">—</div></div><div class="metric-icon">🌧️</div></div>
-    <div class="source">Datos meteorológicos actuales</div>
+    <div class="source">Open-Meteo Weather API</div>
   </div>
   <div class="metric">
     <div class="metric-top"><div><div class="label">Caudal fluvial</div><div id="river" class="value">—</div></div><div class="metric-icon">🌊</div></div>
-    <div class="source">Datos del caudal del río</div>
+    <div class="source">Open-Meteo Flood API / GloFAS</div>
   </div>
   <div class="metric">
     <div class="metric-top"><div><div class="label">Noticias recientes</div><div id="newsCount" class="value">—</div></div><div class="metric-icon">📰</div></div>
-    <div class="source">Noticias recientes</div>
+    <div class="source">GDELT DOC 2.0 + RSS fallback</div>
   </div>
 </section>
 
 <section class="grid2">
   <div class="card">
-    <div class="card-head"><div><div class="card-title"><span>📊</span><div><h2>Monitoreo ambiental</h2><div class="card-kicker">Condiciones actuales de la zona</div></div></div></div></div>
+    <div class="card-head"><div><div class="card-title"><span>📊</span><div><h2>Monitoreo ambiental</h2><div class="card-kicker">Condiciones actuales y evolución de la zona monitoreada</div></div></div></div></div>
     <div id="status" class="status">Cargando APIs…</div>
+    <div class="pills">
+      <span class="pill">Open-Meteo</span><span class="pill">GloFAS</span><span class="pill">GDELT</span><span class="pill">API Gateway</span><span class="pill">AWS Lambda</span><span class="pill">DynamoDB</span>
+    </div>
     <div class="table-wrap"><table>
       <tr><th>Precipitación</th><td id="precip">—</td></tr>
       <tr><th>Humedad</th><td id="humidity">—</td></tr>
       <tr><th>Viento</th><td id="wind">—</td></tr>
-      <tr><th>Caudal máximo</th><td id="riverMax">—</td></tr>
+      <tr><th>Caudal máximo (7 días)</th><td id="riverMax">—</td></tr>
       <tr><th>Última actualización</th><td id="updated">—</td></tr>
     </table></div>
   </div>
 
   <div class="card">
-    <div class="card-head"><div class="card-title"><span>🚨</span><div><h2>Estado del sistema</h2><div class="card-kicker">Nivel de riesgo y estado actual</div></div></div></div>
-    <div id="backend" class="status">Información actualizada.</div>
+    <div class="card-head"><div class="card-title"><span>🚨</span><div><h2>Estado del sistema</h2><div class="card-kicker">Riesgo calculado y conectividad de la plataforma</div></div></div></div>
+    <div id="backend" class="status">Backend AWS: API Gateway + Lambda + DynamoDB + SNS.</div>
     <div class="risk-panel">
       <div class="risk-dot">🛡️</div>
       <div class="risk-copy">
@@ -317,11 +319,11 @@ footer{color:var(--muted);font-size:11px;padding:20px 3px 12px;text-align:center
 
 <section class="card section-card">
   <div class="card-title"><span>🗄️</span><div><h2>Mediciones registradas en la nube</h2><div class="card-kicker">Datos almacenados en DynamoDB y recuperados mediante API Gateway</div></div></div>
-  <div id="measurements" class="status">Información registrada.</div>
+  <div id="measurements" class="status">Conecta la API para ver las mediciones guardadas.</div>
   <div class="table-wrap"><table><thead><tr><th>Estación</th><th>Lluvia mm/h</th><th>Nivel de río m</th><th>Riesgo</th></tr></thead><tbody id="rows"></tbody></table></div>
 </section>
 
-<footer>Proyecto académico · Información meteorológica, hidrológica, noticias y alertas para el monitoreo preventivo en Perú.</footer>
+<footer><span style="opacity:.75">Versión 2026-10-04 · Noticias con respaldo AWS/Render</span><br>Proyecto académico de Computación en la Nube · Las APIs externas determinan la disponibilidad y frecuencia real de actualización de sus fuentes. · Geocodificación: © OpenStreetMap contributors</footer>
 </div>
 
 <script>
@@ -555,8 +557,8 @@ async function loadDirectAPIs(){
 }
 async function loadAWS(){
   if(!api()){
-    $('backend').textContent='Información en modo público.';
-    $('alertsStatus').textContent='Información de alertas disponible.';
+    $('backend').textContent='Modo web directo activo: Weather, Flood y News se consultan mediante APIs públicas. Conecta el backend para ver alertas y mediciones.';
+    $('alertsStatus').textContent='Conecta el backend para consultar alertas.';
     return;
   }
   try{
@@ -570,14 +572,14 @@ async function loadAWS(){
     const h=hRes.status==='fulfilled'?hRes.value:{provider:'AWS'};
     let items=[];
     const provider=h.provider||'backend cloud';
-    $('backend').textContent='Información actualizada correctamente.';
+    $('backend').textContent='Backend conectado: '+provider+' · AWS API Gateway + Lambda + DynamoDB + SNS.';
     if(mRes.status==='fulfilled'){
       const m=mRes.value;
       items=m.items||[];
-      $('measurements').textContent=items.length+' mediciones recibidas.';
+      $('measurements').textContent=items.length+' mediciones recibidas desde DynamoDB.';
       $('rows').innerHTML=items.slice(0,10).map(x=>'<tr><td>'+(x.station_id||'—')+'</td><td>'+((x.rain_mm_h??'—'))+'</td><td>'+((x.river_level_m??'—'))+'</td><td>'+riskBadge(x.risk_level||'—')+'</td></tr>').join('');
     }else{
-      $('measurements').textContent='No se pudieron consultar las mediciones registradas.';
+      $('measurements').textContent='No se pudieron consultar las mediciones de DynamoDB.';
     }
 
     const a=aRes.status==='fulfilled'?aRes.value:{items:[]};
@@ -597,18 +599,18 @@ async function loadAWS(){
       const cls=levelClass(x.level);
       return '<div class="alert-card official '+cls+'"><div><span class="badge '+(cls==='critical'?'danger':cls==='high'?'danger':cls==='medium'?'warn':'ok')+'">'+(x.level||'INFORMACION')+'</span> <span class="alert-title">'+(x.title||'Aviso oficial SENAMHI')+'</span></div><div class="alert-meta">SENAMHI · N.º '+(x.number||'—')+' · Inicio: '+(x.start_at||'—')+' · Fin: '+(x.end_at||'—')+'</div><a class="alert-link" href="'+(x.url||'https://www.senamhi.gob.pe/?p=avisos')+'" target="_blank" rel="noopener">Ver aviso oficial</a></div>';
     }).join('');
-    $('officialAlerts').innerHTML=officialHtml||'<div class="empty">No se encontraron avisos oficiales de lluvias, inundaciones o crecidas.</div>';
+    $('officialAlerts').innerHTML=officialHtml||'<div class="empty">No se encontraron avisos oficiales relacionados con lluvias, inundaciones, crecidas o quebradas.</div>';
 
     const generatedHtml=generatedItems.slice(0,8).map(x=>{
       const cls=levelClass(x.level);
       return '<div class="alert-card '+cls+'"><div><span class="badge '+(cls==='critical'?'danger':cls==='high'?'danger':cls==='medium'?'warn':'ok')+'">'+(x.level||'BAJO')+'</span> <span class="alert-title">Riesgo calculado por la plataforma</span></div><div class="alert-meta">'+(x.message||'Sin detalle')+' · '+(x.timestamp||'')+'</div></div>';
     }).join('');
-    $('systemAlerts').innerHTML=generatedHtml||'<div class="empty">No hay alertas de nivel alto o crítico.</div>';
+    $('systemAlerts').innerHTML=generatedHtml||'<div class="empty">No hay alertas calculadas de nivel alto o crítico.</div>';
 
     if(!items.length)$('rows').innerHTML='';
   }catch(e){
-    $('backend').textContent='No se pudo actualizar la información;
-    $('alertsStatus').textContent='No se pudieron actualizar las alertas.';
+    $('backend').textContent='No se pudo conectar con el backend: '+e.message;
+    $('alertsStatus').textContent='No se pudieron consultar las alertas.';
   }
 }
 
