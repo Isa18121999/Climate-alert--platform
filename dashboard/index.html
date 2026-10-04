@@ -354,45 +354,67 @@ function classifyNews(a){
 }
 
 let lastResolvedCoords='';
+let currentLocationLabel='Ubicación seleccionada';
 async function updateLocationName(latValue, lonValue){
   const latNum=Number(latValue), lonNum=Number(lonValue);
-  if(!Number.isFinite(latNum)||!Number.isFinite(lonNum)) return;
+  if(!Number.isFinite(latNum)||!Number.isFinite(lonNum)) return currentLocationLabel;
+  if(latNum < -90 || latNum > 90 || lonNum < -180 || lonNum > 180) return currentLocationLabel;
   const key=latNum.toFixed(6)+','+lonNum.toFixed(6);
   $('locationTag').textContent='📍 Buscando ubicación…';
   try{
-    if(key===lastResolvedCoords) return;
+    if(key===lastResolvedCoords) return currentLocationLabel;
     const url='https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&accept-language=es&zoom=14&lat='+encodeURIComponent(latNum)+'&lon='+encodeURIComponent(lonNum);
     const r=await fetch(url,{headers:{'Accept':'application/json'}});
     if(!r.ok) throw new Error('HTTP '+r.status);
     const data=await r.json();
     const a=data.address||{};
-    const locality=a.city||a.town||a.municipality||a.village||a.suburb||a.county||'Ubicación seleccionada';
+    const locality=a.city||a.town||a.municipality||a.village||a.suburb||a.county;
     const district=a.suburb||a.city_district||a.municipality;
     const region=a.state||a.region;
-    const country=a.country||'';
+    const country=a.country;
     const parts=[];
     if(locality) parts.push(locality);
     if(district && district!==locality) parts.push(district);
     if(region && region!==locality && region!==district) parts.push(region);
     if(country) parts.push(country);
-    $('locationTag').textContent='📍 '+(parts.length?parts.join(', '):(latNum.toFixed(4)+' · '+lonNum.toFixed(4)));
+    currentLocationLabel=parts.length?parts.join(', '):(latNum.toFixed(4)+' · '+lonNum.toFixed(4));
+    $('locationTag').textContent='📍 '+currentLocationLabel;
     lastResolvedCoords=key;
+    return currentLocationLabel;
   }catch(e){
-    $('locationTag').textContent='📍 '+latNum.toFixed(4)+' · '+lonNum.toFixed(4);
+    currentLocationLabel=latNum.toFixed(4)+' · '+lonNum.toFixed(4);
+    $('locationTag').textContent='📍 '+currentLocationLabel;
+    return currentLocationLabel;
   }
 }
 
+let coordinateTimer=null;
+function scheduleCoordinateRefresh(){
+  clearTimeout(coordinateTimer);
+  coordinateTimer=setTimeout(()=>{
+    const lat=Number($('lat').value), lon=Number($('lon').value);
+    if(Number.isFinite(lat)&&Number.isFinite(lon)&&lat>=-90&&lat<=90&&lon>=-180&&lon<=180){
+      refreshAll();
+    }
+  },900);
+}
+
 async function loadDirectAPIs(){
-  const latValue=$('lat').value, lonValue=$('lon').value;
+  const latValue=$('lat').value.trim(), lonValue=$('lon').value.trim();
+  const latNumber=Number(latValue), lonNumber=Number(lonValue);
+  if(!Number.isFinite(latNumber)||!Number.isFinite(lonNumber)||latNumber < -90||latNumber > 90||lonNumber < -180||lonNumber > 180){
+    throw new Error('Ingresa coordenadas válidas: latitud entre -90 y 90 y longitud entre -180 y 180.');
+  }
   const lat=encodeURIComponent(latValue),lon=encodeURIComponent(lonValue);
-  await updateLocationName(latValue, lonValue);
+  const locationLabel=await updateLocationName(latValue, lonValue);
   const base=api();
   let w,f,n;
   if(base){
+    const newsQuery=encodeURIComponent((locationLabel||'Perú')+' lluvias inundaciones El Niño');
     [w,f,n]=await Promise.all([
       q(base+'/weather?lat='+lat+'&lon='+lon),
       q(base+'/flood?lat='+lat+'&lon='+lon),
-      q(base+'/news')
+      q(base+'/news?q='+newsQuery)
     ]);
   } else {
     const weatherUrl='https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,relative_humidity_2m,precipitation,rain,wind_speed_10m&forecast_days=1&timezone=UTC';
@@ -487,6 +509,10 @@ async function refreshAll(){
   }
   await loadAWS();
 }
+$('lat').addEventListener('change', scheduleCoordinateRefresh);
+$('lon').addEventListener('change', scheduleCoordinateRefresh);
+$('lat').addEventListener('blur', scheduleCoordinateRefresh);
+$('lon').addEventListener('blur', scheduleCoordinateRefresh);
 refreshAll();
 setInterval(refreshAll,60000);
 </script>
