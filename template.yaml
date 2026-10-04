@@ -35,13 +35,7 @@ Resources:
     Properties:
       CodeUri: src/
       Handler: handler.app
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref MeasurementsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref AlertsTable
-        - SNSPublishMessagePolicy:
-            TopicName: !GetAtt AlertTopic.TopicName
+      Role: arn:aws:iam::348802848943:role/LabRole
       Events:
         ScheduledMonitor:
           Type: Schedule
