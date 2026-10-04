@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 import requests
+import xml.etree.ElementTree as ET
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
@@ -31,6 +32,36 @@ def get_json(url: str, params: dict, timeout: int = 10) -> dict:
     r = requests.get(url, params=params, timeout=timeout, headers={"User-Agent": "climate-alert-platform/1.0"})
     r.raise_for_status()
     return r.json()
+
+
+def google_news_rss(query: str) -> list[dict]:
+    r = requests.get(
+        "https://news.google.com/rss/search",
+        params={"q": query, "hl": "es-419", "gl": "PE", "ceid": "PE:es-419"},
+        timeout=10,
+        headers={"User-Agent": "climate-alert-platform/1.0"},
+    )
+    r.raise_for_status()
+    root = ET.fromstring(r.content)
+    articles = []
+    for item in root.findall(".//item"):
+        title = item.findtext("title") or ""
+        link = item.findtext("link") or ""
+        pub_date = item.findtext("pubDate")
+        source = item.find("source")
+        source_name = source.text if source is not None else None
+        if title and link:
+            articles.append({
+                "title": title,
+                "url": link,
+                "domain": source_name,
+                "language": "es",
+                "seendate": pub_date,
+                "socialimage": None,
+            })
+        if len(articles) >= 20:
+            break
+    return articles
 
 
 def risk(rain: float, river: float) -> tuple[str, list[str]]:
@@ -120,26 +151,52 @@ def flood():
 @app.get("/news")
 def news():
     query = request.args.get("q", "Peru inundación lluvias El Niño")
-    data = get_json(
-        GDELT_DOC,
-        {
+    errors = []
+    try:
+        data = get_json(
+            GDELT_DOC,
+            {
+                "query": query,
+                "mode": "ArtList",
+                "format": "json",
+                "maxrecords": 20,
+                "sort": "HybridRel",
+                "timespan": "24h",
+                "sourcelang": "Spanish",
+            },
+            timeout=10,
+        )
+        articles = data.get("articles", [])
+        if articles:
+            return jsonify({
+                "source": "GDELT DOC 2.0",
+                "fetched_at": datetime.now(timezone.utc).isoformat(),
+                "query": query,
+                "articles": articles,
+            })
+        errors.append("GDELT sin resultados")
+    except Exception as exc:
+        errors.append(f"GDELT: {exc}")
+
+    try:
+        articles = google_news_rss(query)
+        return jsonify({
+            "source": "Google News RSS",
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
             "query": query,
-            "mode": "ArtList",
-            "format": "json",
-            "maxrecords": 12,
-            "sort": "HybridRel",
-            "timespan": "15min",
-            "sourcelang": "Spanish",
-        },
-        timeout=15,
-    )
+            "articles": articles,
+            "source_update_note": "Respaldo de Google News RSS cuando GDELT no responde o no devuelve noticias.",
+        })
+    except Exception as exc:
+        errors.append(f"Google News RSS: {exc}")
+
     return jsonify({
-        "source": "GDELT DOC 2.0",
+        "source": "News fallback",
         "fetched_at": datetime.now(timezone.utc).isoformat(),
         "query": query,
-        "articles": data.get("articles", []),
+        "articles": [],
+        "source_update_note": "No fue posible consultar las fuentes de noticias: " + "; ".join(errors),
     })
-
 
 
 
