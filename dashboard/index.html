@@ -248,6 +248,12 @@ footer{color:var(--muted);font-size:11px;padding:20px 3px 12px;text-align:center
     <button class="primary-btn" onclick="refreshAll()">↻ Actualizar datos</button>
   </div>
 
+  <details class="config">
+    <summary>⚙️ Configuración técnica</summary>
+    <div class="config-row">
+      <input class="control" id="api" value="https://kz34irut7h.execute-api.us-east-1.amazonaws.com" aria-label="URL del backend AWS" placeholder="URL del backend AWS">
+    </div>
+  </details>
   <div class="hero-footer">
     <div class="hero-note">Monitoreo meteorológico, hidrológico, noticias y alertas en una sola vista · actualización automática cada 60 segundos</div>
     <div class="location-tag" id="locationTag">📍 Ubicación seleccionada</div>
@@ -329,8 +335,7 @@ footer{color:var(--muted);font-size:11px;padding:20px 3px 12px;text-align:center
 
 <script>
 const $=id=>document.getElementById(id);
-const AWS_API='https://kz34irut7h.execute-api.us-east-1.amazonaws.com';
-const api=()=>AWS_API;
+const api=()=>($('api').value||'').replace(/\/$/,'');
 const q=async(url,timeout=12000)=>{const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeout);try{const r=await fetch(url,{signal:controller.signal});if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}finally{clearTimeout(timer)}};
 
 function riskBadge(level){
