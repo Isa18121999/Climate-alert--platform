@@ -82,14 +82,28 @@ def _gdelt_live_rss(query: str) -> dict:
     articles = []
     for item in root.findall(".//item"):
         title = item.findtext("title") or ""
-        haystack = title.lower()
-        if terms and not any(term in haystack for term in terms):
-            continue
+        link = item.findtext("link") or ""
         source = item.find("source")
+        source_name = source.text if source is not None else None
+        haystack = title.lower()
+        link_lower = link.lower()
+        climate_terms = (
+            "lluvia", "lluvias", "precipit", "inund", "desborde",
+            "huaico", "huayco", "tormenta", "caudal", "quebrada",
+            "río", "rio", "el niño", "el nino"
+        )
+        peru_terms = ("peru", "perú", "senamhi", ".pe/", ".pe")
+        has_climate = any(term in haystack for term in climate_terms)
+        has_peru = any(
+            term in haystack or term in link_lower or term in (source_name or "").lower()
+            for term in peru_terms
+        )
+        if not has_climate or not has_peru:
+            continue
         articles.append({
             "title": title,
-            "url": item.findtext("link"),
-            "domain": source.text if source is not None else None,
+            "url": link,
+            "domain": source_name,
             "language": "es",
             "seendate": item.findtext("pubDate"),
             "socialimage": None,
@@ -178,5 +192,5 @@ def news(query: str = "Peru inundación lluvias El Niño") -> dict:
             return _gdelt_live_rss(query)
         raise
     except json.JSONDecodeError:
-        # Some upstream responses can be HTML/empty instead of JSON; use RSS fallback.
-        return _google_news_rss(query)
+        # Some upstream responses can be HTML/empty instead of JSON; use the live RSS fallback.
+        return _gdelt_live_rss(query)
