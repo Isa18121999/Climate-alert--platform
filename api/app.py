@@ -59,6 +59,8 @@ def google_news_rss(query: str) -> list[dict]:
                 "language": "es",
                 "seendate": pub_date,
                 "socialimage": None,
+                "country": "PE",
+                "region": "Perú",
             })
         if len(articles) >= 20:
             break
