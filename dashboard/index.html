@@ -12,7 +12,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#eef5f8}ifr
 </style>
 </head>
 <body>
-<iframe id="app" src="index-original.html?v=20261005-newsfix1" title="Climate Alert Platform"></iframe>
+<iframe id="app" src="index-original.html?v=20261005-recent-measurement1" title="Climate Alert Platform"></iframe>
 <script>
 const HIST=[
 ['269','INCREMENTO DE VIENTO EN LA SIERRA NORTE','2026-07-07','2026-07-09','NARANJA'],
@@ -59,6 +59,51 @@ function moveCalculatedAlertsToCurrent(){
   cards.forEach(card=>{const key=(card.textContent||'').trim();if(![...target.querySelectorAll('.alert-card')].some(x=>(x.textContent||'').trim()===key))target.appendChild(card)});source.innerHTML='';
 }
 
+// Solo una medición registrada durante los últimos 15 minutos puede
+// convertirse en un aviso actual. Las mediciones antiguas permanecen
+// en el historial/Mediciones registradas y nunca se muestran como actuales.
+let lastMeasurementCheck=0;
+async function syncRecentMeasurements(){
+  const d=getDoc();if(!d)return;
+  const target=d.getElementById('officialAlerts');if(!target)return;
+  const apiInput=d.getElementById('api');
+  const base=(apiInput&&apiInput.value?apiInput.value:'').replace(/\/$/,'');
+  if(!base||Date.now()-lastMeasurementCheck<15000)return;
+  lastMeasurementCheck=Date.now();
+  try{
+    const response=await fetch(base+'/measurements',{cache:'no-store'});
+    if(!response.ok)throw new Error('HTTP '+response.status);
+    const data=await response.json();
+    const items=Array.isArray(data.items)?data.items:[];
+    d.querySelectorAll('.recent-measurement-alert').forEach(x=>x.remove());
+    const recent=items.filter(item=>{
+      const risk=String(item.risk_level||'').toUpperCase();
+      const t=Date.parse(item.timestamp||'');
+      if(!['ALTO','CRITICO'].includes(risk)||Number.isNaN(t))return false;
+      const age=Date.now()-t;
+      return age>=0&&age<=15*60*1000;
+    }).sort((a,b)=>Date.parse(b.timestamp)-Date.parse(a.timestamp));
+    if(!recent.length)return;
+    let label=target.querySelector('.recent-measurement-label');
+    if(!label){label=d.createElement('div');label.className='label recent-measurement-label';label.style.marginTop='12px';label.textContent='⚠️ Riesgo calculado por medición reciente';target.appendChild(label)}
+    recent.forEach(item=>{
+      const card=d.createElement('div');
+      const risk=String(item.risk_level).toUpperCase();
+      const cls=risk==='CRITICO'?'critical':'medium';
+      const level=risk==='CRITICO'?'EXTREMA':'FUERTE';
+      const badge=risk==='CRITICO'?'danger':'warn';
+      const when=new Date(item.timestamp).toLocaleString('es-PE',{dateStyle:'short',timeStyle:'short'});
+      card.className='alert-card recent-measurement-alert '+cls;
+      card.dataset.measurementId=item.id||'';
+      card.innerHTML='<div><span class="badge '+badge+'">'+level+'</span> <span class="alert-title">Riesgo calculado por medición registrada</span></div>'+
+        '<div class="alert-meta">Estación: '+(item.station_id||'—')+' · Lluvia: '+Number(item.rain_mm_h||0).toFixed(1)+' mm/h · Caudal/nivel: '+Number(item.river_level_m||0).toFixed(1)+' · Registrada: '+when+' · Medición reciente (≤ 15 min)</div>';
+      target.appendChild(card);
+    });
+  }catch(e){
+    console.warn('No se pudieron consultar las mediciones recientes:',e);
+  }
+}
+
 // Filtro visual de última línea: elimina cualquier noticia que no tenga
 // un fenómeno climático concreto Y una referencia clara a Perú.
 // "alerta" por sí sola NO es un fenómeno climático.
@@ -79,7 +124,7 @@ function fixNews(){
   const count=d.getElementById('newsCount');if(count)count.textContent=String(kept);
   if(!kept)box.innerHTML='<div class="empty">No se encontraron noticias climáticas relevantes de Perú.</div>';
 }
-function fix(){fixHistory();normalizeSeverity();moveCalculatedAlertsToCurrent();fixNews()}
+function fix(){fixHistory();normalizeSeverity();moveCalculatedAlertsToCurrent();fixNews();syncRecentMeasurements()}
 const f=document.getElementById('app');
 f.addEventListener('load',()=>{fix();setInterval(fix,1000)});
 </script>
