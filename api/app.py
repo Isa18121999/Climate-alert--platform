@@ -4,7 +4,7 @@ import os
 import sys
 from datetime import datetime, timezone
 from uuid import uuid4
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 
 import requests
 import xml.etree.ElementTree as ET
@@ -28,18 +28,26 @@ measurements: list[dict] = []
 alerts: list[dict] = []
 official_alert_cache: list[dict] = []
 
+# Fuentes permitidas: únicamente medios peruanos y SENAMHI.
 PERU_MEDIA_DOMAINS = (
     "rpp.pe", "elcomercio.pe", "larepublica.pe", "andina.pe", "gestion.pe", "peru21.pe",
+    "senamhi.gob.pe", "web2.senamhi.gob.pe",
 )
+
+# Una noticia entra solamente si trata un fenómeno/alerta climático.
 CLIMATE_TERMS = (
-    "alerta", "lluvia", "lluvias", "precipit", "inund", "desborde", "huaico", "huayco",
-    "tormenta", "crecida", "caudal", "quebrada", "deslizamiento", "río", "rio", "senamhi",
-    "ciclón", "ciclon", "meteorológ", "meteorolog", "temperatura extrema", "ola de calor",
-    "oleaje", "granizo", "helada", "friaje", "viento fuerte", "fenómeno el niño", "fenomeno el nino",
+    "alerta", "aviso meteorológico", "aviso meteorologico", "lluvia", "lluvias", "precipit",
+    "inund", "desborde", "huaico", "huayco", "tormenta", "crecida", "caudal", "quebrada",
+    "deslizamiento", "río", "rio", "senamhi", "ciclón", "ciclon", "meteorológ", "meteorolog",
+    "temperatura extrema", "ola de calor", "oleaje", "granizo", "helada", "friaje", "viento fuerte",
+    "fenómeno el niño", "fenomeno el nino", "el niño costero", "el nino costero", "hidrológ", "hidrolog",
 )
+
+# Bloqueo explícito de contenido que no pertenece a Climate Alert.
 GENERIC_TERMS = (
     "horóscopo", "horoscopo", "deportes", "entretenimiento", "farándula", "farandula", "informativa",
-    "elecciones", "votación", "votacion", "partido", "fútbol", "futbol",
+    "elecciones", "votación", "votacion", "partido", "fútbol", "futbol", "congreso", "candidato",
+    "candidata", "campaña electoral", "espectáculo", "espectaculo", "celebridades",
 )
 
 
@@ -59,15 +67,16 @@ def _is_climate_article(title: str, description: str = "", category: str = "") -
     return any(term in text for term in CLIMATE_TERMS) and not any(term in text for term in GENERIC_TERMS)
 
 
-def _add_article(articles: list[dict], seen: set[str], title: str, link: str, source_label: str, description: str = "", pub_date: str | None = None, category: str = "") -> None:
-    title = BeautifulSoup(title, "html.parser").get_text(" ", strip=True)
-    description = BeautifulSoup(description, "html.parser").get_text(" ", strip=True)
+def _add_article(articles: list[dict], seen: set[str], title: str, link: str, source_label: str,
+                 description: str = "", pub_date: str | None = None, category: str = "") -> None:
+    title = BeautifulSoup(title or "", "html.parser").get_text(" ", strip=True)
+    description = BeautifulSoup(description or "", "html.parser").get_text(" ", strip=True)
     link = link.strip()
     if not title or not link or not _allowed_peru_source(link):
         return
     if not _is_climate_article(title, description, category):
         return
-    key = link.lower()
+    key = link.lower().split("#", 1)[0]
     if key in seen:
         return
     seen.add(key)
@@ -81,12 +90,11 @@ def _add_article(articles: list[dict], seen: set[str], title: str, link: str, so
         "socialimage": None,
         "country": "PE",
         "region": "Perú",
-        "category": category or "Clima",
+        "category": "Clima",
     })
 
 
 def _parse_tolerant_feed(content: bytes, source_label: str, articles: list[dict], seen: set[str]) -> None:
-    """Parse malformed RSS without allowing one bad XML token to empty all news."""
     try:
         root = ET.fromstring(content)
         items = root.findall(".//item")
@@ -104,7 +112,7 @@ def _parse_tolerant_feed(content: bytes, source_label: str, articles: list[dict]
     except ET.ParseError:
         pass
 
-    # BeautifulSoup's XML parser is more tolerant of malformed entities.
+    # RSS con entidades/XML imperfecto: segundo parser tolerante.
     soup = BeautifulSoup(content, "xml")
     for item in soup.find_all("item"):
         _add_article(
@@ -118,22 +126,32 @@ def _parse_tolerant_feed(content: bytes, source_label: str, articles: list[dict]
         )
 
 
-def _parse_source_page(content: bytes, source_label: str, articles: list[dict], seen: set[str]) -> None:
-    """Fallback for publishers that serve an HTML page instead of valid RSS."""
+def _parse_source_page(content: bytes, page_url: str, source_label: str,
+                       articles: list[dict], seen: set[str]) -> None:
+    """Fallback HTML: toma enlaces reales del medio y vuelve a aplicar el filtro climático."""
     soup = BeautifulSoup(content, "html.parser")
     for anchor in soup.find_all("a", href=True):
         title = anchor.get_text(" ", strip=True)
-        href = anchor.get("href", "").strip()
-        if href.startswith("/"):
-            host = "rpp.pe" if source_label == "RPP" else "elcomercio.pe"
-            href = f"https://{host}{href}"
+        href = urljoin(page_url, anchor.get("href", "").strip())
         _add_article(articles, seen, title, href, source_label)
-        if len(articles) >= 10:
+        if len(articles) >= 20:
             break
 
 
+def _fetch(url: str, timeout: int = 6) -> bytes:
+    r = requests.get(url, timeout=timeout, headers={
+        "User-Agent": "ClimateAlertPlatform/1.0 (+academic-project)",
+        "Accept-Language": "es-PE,es;q=0.9",
+    })
+    r.raise_for_status()
+    return r.content
+
+
 def peruvian_climate_rss_news() -> list[dict]:
-    feeds = [
+    # RPP y El Comercio aportan noticias periodísticas; SENAMHI aporta la fuente oficial.
+    sources = [
+        ("SENAMHI", "https://www.senamhi.gob.pe/?p=prediccion", None),
+        ("SENAMHI", "https://www.senamhi.gob.pe/?p=fenomeno-el-nino", None),
         ("RPP", "https://rpp.pe/rss-titulares.xml", "https://rpp.pe/fenomenoelnino"),
         ("El Comercio", "https://elcomercio.pe/arc/outboundfeeds/rss/category/peru/?outputType=xml", "https://elcomercio.pe/noticias/senamhi/"),
         ("El Comercio Lima", "https://elcomercio.pe/arc/outboundfeeds/rss/category/lima/?outputType=xml", "https://elcomercio.pe/noticias/senamhi/"),
@@ -141,48 +159,41 @@ def peruvian_climate_rss_news() -> list[dict]:
     articles: list[dict] = []
     seen: set[str] = set()
 
-    for source_label, feed_url, page_url in feeds:
+    for source_label, feed_or_page, fallback_page in sources:
         try:
-            r = requests.get(feed_url, timeout=5, headers={"User-Agent": "ClimateAlertPlatform/1.0 (+academic-project)"})
-            r.raise_for_status()
-            _parse_tolerant_feed(r.content, source_label, articles, seen)
+            content = _fetch(feed_or_page)
+            if feed_or_page.endswith(".xml"):
+                _parse_tolerant_feed(content, source_label, articles, seen)
+            else:
+                _parse_source_page(content, feed_or_page, source_label, articles, seen)
         except Exception as exc:
-            print(f"RSS {source_label}: {exc}")
+            print(f"NEWS {source_label} {feed_or_page}: {exc}")
 
-        if len(articles) < 5:
+        if fallback_page and len(articles) < 5:
             try:
-                r = requests.get(page_url, timeout=5, headers={"User-Agent": "ClimateAlertPlatform/1.0 (+academic-project)"})
-                r.raise_for_status()
-                _parse_source_page(r.content, source_label, articles, seen)
+                content = _fetch(fallback_page)
+                _parse_source_page(content, fallback_page, source_label, articles, seen)
             except Exception as exc:
-                print(f"PAGE {source_label}: {exc}")
+                print(f"NEWS FALLBACK {source_label}: {exc}")
 
-        if len(articles) >= 10:
+        if len(articles) >= 20:
             break
 
+    # Mantener primero las noticias con fecha RSS y después las obtenidas de HTML.
     return articles[:20]
 
 
 def risk(rain: float, river: float) -> tuple[str, list[str]]:
     reasons = []
-    if rain >= 50:
-        reasons.append("lluvia >= 50 mm/h")
-    elif rain >= 35:
-        reasons.append("lluvia >= 35 mm/h")
-    elif rain >= 20:
-        reasons.append("lluvia >= 20 mm/h")
-    if river >= 5:
-        reasons.append("nivel de río >= 5 m")
-    elif river >= 4:
-        reasons.append("nivel de río >= 4 m")
-    elif river >= 3:
-        reasons.append("nivel de río >= 3 m")
-    if rain >= 50 or river >= 5:
-        return "CRITICO", reasons
-    if rain >= 35 or river >= 4 or len(reasons) >= 2:
-        return "ALTO", reasons
-    if rain >= 20 or river >= 3:
-        return "MEDIO", reasons
+    if rain >= 50: reasons.append("lluvia >= 50 mm/h")
+    elif rain >= 35: reasons.append("lluvia >= 35 mm/h")
+    elif rain >= 20: reasons.append("lluvia >= 20 mm/h")
+    if river >= 5: reasons.append("nivel de río >= 5 m")
+    elif river >= 4: reasons.append("nivel de río >= 4 m")
+    elif river >= 3: reasons.append("nivel de río >= 3 m")
+    if rain >= 50 or river >= 5: return "CRITICO", reasons
+    if rain >= 35 or river >= 4 or len(reasons) >= 2: return "ALTO", reasons
+    if rain >= 20 or river >= 3: return "MEDIO", reasons
     return "BAJO", reasons
 
 
@@ -198,16 +209,14 @@ def health_check():
 
 @app.get("/weather")
 def weather():
-    lat = float(request.args.get("lat", "-5.1945"))
-    lon = float(request.args.get("lon", "-80.6328"))
+    lat = float(request.args.get("lat", "-5.1945")); lon = float(request.args.get("lon", "-80.6328"))
     data = get_json(OPEN_METEO_FORECAST, {"latitude": lat, "longitude": lon, "current": "temperature_2m,relative_humidity_2m,precipitation,rain,wind_speed_10m", "forecast_days": 1, "timezone": "UTC"})
     return jsonify({"source": "Open-Meteo Weather API", "fetched_at": datetime.now(timezone.utc).isoformat(), "location": {"lat": lat, "lon": lon}, **data})
 
 
 @app.get("/flood")
 def flood():
-    lat = float(request.args.get("lat", "-5.1945"))
-    lon = float(request.args.get("lon", "-80.6328"))
+    lat = float(request.args.get("lat", "-5.1945")); lon = float(request.args.get("lon", "-80.6328"))
     data = get_json(OPEN_METEO_FLOOD, {"latitude": lat, "longitude": lon, "daily": "river_discharge,river_discharge_max", "forecast_days": 7, "timezone": "UTC"})
     return jsonify({"source": "Open-Meteo Flood API / GloFAS", "fetched_at": datetime.now(timezone.utc).isoformat(), "location": {"lat": lat, "lon": lon}, **data})
 
@@ -216,7 +225,14 @@ def flood():
 def news():
     query = request.args.get("q", "Perú alerta climática lluvias inundaciones desbordes huaicos SENAMHI")
     articles = peruvian_climate_rss_news()
-    return jsonify({"source": "RSS y páginas de medios peruanos", "fetched_at": datetime.now(timezone.utc).isoformat(), "query": query, "articles": articles, "source_update_note": "Noticias climáticas recientes de medios peruanos." if articles else "No se encontraron noticias climáticas válidas en las fuentes peruanas configuradas."})
+    return jsonify({
+        "source": "SENAMHI + medios peruanos (RPP y El Comercio)",
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+        "query": query,
+        "articles": articles,
+        "source_update_note": "Solo noticias climáticas de Perú. Se excluyen noticias internacionales, genéricas y de categoría Informativa."
+            if articles else "No se encontraron noticias climáticas válidas en las fuentes peruanas configuradas."
+    })
 
 
 @app.get("/official-alerts")
@@ -257,13 +273,11 @@ def create_measurement():
 
 
 @app.get("/measurements")
-def list_measurements():
-    return jsonify({"items": measurements[:50]})
+def list_measurements(): return jsonify({"items": measurements[:50]})
 
 
 @app.get("/alerts")
-def list_alerts():
-    return jsonify({"items": alerts[:50]})
+def list_alerts(): return jsonify({"items": alerts[:50]})
 
 
 if __name__ == "__main__":
