@@ -15,8 +15,8 @@ PERU_CLIMATE_TERMS = (
     "lluvia", "lluvias", "precipit", "inund", "desborde", "huaico", "huayco",
     "tormenta", "crecida", "caudal", "quebrada", "deslizamiento", "río", "rio", "senamhi",
     "fenómeno el niño", "fenomeno el nino", "el niño costero", "el nino costero", "ciclón", "ciclon",
-    "meteorológ", "meteorolog", "temperatura extrema", "oleaje", "granizo", "helada", "friaje",
-    "viento fuerte", "vientos fuertes", "temperatura máxima", "temperatura minima", "temperatura mínima",
+    "meteorológ", "meteorolog", "temperatura", "oleaje", "granizo", "helada", "friaje",
+    "viento fuerte", "vientos fuertes", "enfen",
 )
 PERU_SIGNALS = (
     "perú", "peru", "senamhi", "indeci", "lima", "callao", "piura", "tumbes", "chiclayo",
@@ -72,15 +72,17 @@ def _clean_text(value: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", value or "")).strip()
 
 
-def _is_climate_item(title: str, description: str = "", category: str = "") -> bool:
+def _is_climate_item(title: str, description: str = "", category: str = "", source: str = "", url: str = "") -> bool:
     text = f"{title} {description} {category}".lower()
-    # A generic "alerta" is deliberately excluded. Require a concrete
-    # climate/emergency phenomenon AND a Peru-specific place/institution.
-    return (
-        any(term in text for term in PERU_CLIMATE_TERMS)
-        and any(term in text for term in PERU_SIGNALS)
-        and not any(term in text for term in GENERIC_TERMS)
-    )
+    if not any(term in text for term in PERU_CLIMATE_TERMS):
+        return False
+    # A trusted Peruvian media/SENAMHI source is enough to establish Peru;
+    # many valid headlines omit the word "Perú" while naming a local event.
+    trusted_source = _allowed_peru_source(url, source) or "senamhi" in source.lower()
+    peru_signal = any(term in text for term in PERU_SIGNALS) or trusted_source
+    if not peru_signal:
+        return False
+    return not any(term in text for term in GENERIC_TERMS)
 
 
 def _significance(title: str, description: str = "") -> str:
@@ -89,7 +91,7 @@ def _significance(title: str, description: str = "") -> str:
         return "CRITICA"
     if re.search(r"lluvia extrema|lluvias intensas|precipitaciones intensas|alerta|activaci[oó]n de quebrada|caudal|crecida|tormenta|cicl[oó]n|el ni[nñ]o costero|fen[oó]meno el ni[nñ]o|pron[oó]stico", text):
         return "ALTA"
-    if re.search(r"lluvia|lluvias|precipitaci[oó]n|meteorolog|temperatura extrema", text):
+    if re.search(r"lluvia|lluvias|precipitaci[oó]n|meteorolog|temperatura", text):
         return "MEDIA"
     return "INFORMATIVA"
 
@@ -113,7 +115,7 @@ def _peruvian_climate_rss(query: str) -> dict:
                 description = _clean_text(item.findtext("description") or "")
                 pub_date = item.findtext("pubDate")
                 category = " ".join(x.text or "" for x in item.findall("category"))
-                if not title or not link or not _is_climate_item(title, description, category):
+                if not title or not link or not _is_climate_item(title, description, category, source_label, link):
                     continue
                 if not _allowed_peru_source(link, source_label):
                     continue
@@ -140,7 +142,7 @@ def _peruvian_climate_rss(query: str) -> dict:
         "source": "RSS medios peruanos", "source_url": "https://rpp.pe/rss-titulares.xml",
         "fetched_at": datetime.now(timezone.utc).isoformat(), "query": query,
         "articles": articles[:20],
-        "source_update_note": "Solo noticias climáticas relevantes de Perú. Se exige fenómeno climático/emergencia y referencia a Perú, una región peruana o SENAMHI/INDECI. Se excluyen noticias políticas, internacionales, genéricas y de categoría Informativa.",
+        "source_update_note": "Solo noticias climáticas relevantes de Perú. Se exige fenómeno climático/emergencia y una señal de Perú o una fuente peruana aprobada. Se excluyen noticias políticas, internacionales, genéricas y de categoría Informativa.",
         "warnings": errors,
     }
 
