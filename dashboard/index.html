@@ -12,7 +12,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#eef5f8}ifr
 </style>
 </head>
 <body>
-<iframe id="app" src="index-original.html?v=20261005-senamhi-levels1" title="Climate Alert Platform"></iframe>
+<iframe id="app" src="index-original.html?v=20261005-current-risk2" title="Climate Alert Platform"></iframe>
 <script>
 const HIST=[
 ['269','INCREMENTO DE VIENTO EN LA SIERRA NORTE','2026-07-07','2026-07-09','NARANJA'],
@@ -61,7 +61,32 @@ function normalizeSeverity(){
     if(/\bhigh\b/.test(cls)||/\bmedium\b/.test(cls)){card.classList.remove('high');card.classList.add('medium')}
   });
 }
-function fix(){fixHistory();normalizeSeverity()}
+function moveCalculatedAlertsToCurrent(){
+  const f=document.getElementById('app');
+  let d;try{d=f.contentDocument;if(!d)return}catch(e){return}
+  const source=d.getElementById('systemAlerts');
+  const target=d.getElementById('officialAlerts');
+  if(!source||!target)return;
+  const cards=[...source.querySelectorAll('.alert-card')];
+  if(!cards.length)return;
+  const marker='calculated-current-marker';
+  if(!target.querySelector('.'+marker)){
+    const label=d.createElement('div');
+    label.className='label '+marker;
+    label.style.marginTop='12px';
+    label.textContent='⚠️ Riesgo calculado por Climate Alert';
+    target.appendChild(label);
+  }
+  const markerEl=target.querySelector('.'+marker);
+  cards.forEach(card=>{
+    const key=(card.textContent||'').trim();
+    if(![...target.querySelectorAll('.alert-card')].some(x=>(x.textContent||'').trim()===key)){
+      target.appendChild(card);
+    }
+  });
+  source.innerHTML='';
+}
+function fix(){fixHistory();normalizeSeverity();moveCalculatedAlertsToCurrent()}
 const f=document.getElementById('app');
 f.addEventListener('load',()=>{fix();setInterval(fix,1500)});
 </script>
