@@ -353,6 +353,10 @@ function localRisk(rain,river){
   return {level:'BAJO',reason:'No se alcanzaron umbrales de atención del MVP.'};
 }
 
+function isClimateAlertNews(a){
+  const t=((a.title||'')+' '+(a.description||'')).toLowerCase();
+  return /alerta|clim[aá]tica|lluvia|lluvias|precipitaci[oó]n|inundaci[oó]n|inundaciones|desborde|huaico|huayco|tormenta|crecida|caudal|quebrada|deslizamiento|r[ií]o|senamhi|fen[oó]meno el ni[nñ]o|cicl[oó]n|evento meteorol[oó]gico/.test(t);
+}
 function classifyNews(a){
   const t=((a.title||'')+' '+(a.description||'')).toLowerCase();
   if(/desborde|inundaci[oó]n|huaico|emergencia|r[ií]o crece|r[ií]o se desborda/.test(t)) return {label:'CRÍTICA',cls:'critical'};
@@ -361,7 +365,7 @@ function classifyNews(a){
   return {label:'INFORMATIVA',cls:'info'};
 }
 
-const NEWS_CACHE_KEY='climate_alert_news_all_v2';
+const NEWS_CACHE_KEY='climate_alert_news_climate_pe_v3';
 const NEWS_CACHE_MS=60*1000;
 let lastNewsArticles=[];
 let lastNewsAt=0;
@@ -626,7 +630,8 @@ async function loadNewsLive(){
   const newsQuery=encodeURIComponent('Perú alerta climática lluvias inundaciones desbordes huaicos SENAMHI');
   try{
     const r=await q('https://climate-alert-platform-api.onrender.com/news?q='+newsQuery,10000);
-    const articles=Array.isArray(r.articles)?r.articles:[];
+    const allArticles=Array.isArray(r.articles)?r.articles:[];
+    const articles=allArticles.filter(isClimateAlertNews);
     if(articles.length){
       saveNewsCache(articles);
       renderNewsArticles(articles);
@@ -639,7 +644,8 @@ async function loadNewsLive(){
 
   try{
     const aws=await q(api()+'/news?q='+newsQuery,10000);
-    const articles=Array.isArray(aws.articles)?aws.articles:[];
+    const allArticles=Array.isArray(aws.articles)?aws.articles:[];
+    const articles=allArticles.filter(isClimateAlertNews);
     if(articles.length){
       saveNewsCache(articles);
       renderNewsArticles(articles);
