@@ -178,7 +178,7 @@ def flood():
 
 @app.get("/news")
 def news():
-    query = request.args.get("q", "Perú")
+    query = request.args.get("q", "Perú alerta climática lluvias inundaciones desbordes huaicos SENAMHI")
 
     try:
         articles = gdelt_live_news(query)
