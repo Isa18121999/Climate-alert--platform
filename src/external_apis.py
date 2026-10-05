@@ -86,7 +86,15 @@ def _gdelt_live_rss(query: str) -> dict:
         haystack = (title + " " + link + " " + (source_name or "")).lower()
 
         peru_markers = ("perú", "peru", ".pe/", ".pe", "lima", "piura", "arequipa", "trujillo", "cusco")
+        climate_markers = (
+            "alerta", "climática", "climatica", "lluvia", "lluvias", "precipit",
+            "inund", "desborde", "huaico", "huayco", "tormenta", "crecida",
+            "caudal", "quebrada", "deslizamiento", "río", "rio", "senamhi",
+            "el niño", "el nino", "ciclón", "ciclon", "meteorológ", "meteorolog"
+        )
         if not any(term in haystack for term in peru_markers):
+            continue
+        if not any(term in haystack for term in climate_markers):
             continue
 
         articles.append({
