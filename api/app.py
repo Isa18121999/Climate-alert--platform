@@ -81,7 +81,8 @@ def gdelt_live_news(query: str) -> list[dict]:
         source_name=source.text if source is not None else None
         haystack=(title+" "+link+" "+(source_name or "")).lower()
         markers=("perú","peru",".pe/","lima","piura","arequipa","trujillo","cusco")
-        if title and link and any(x in haystack for x in markers):
+        climate=("alerta","climática","climatica","lluvia","lluvias","precipit","inund","desborde","huaico","huayco","tormenta","crecida","caudal","quebrada","deslizamiento","río","rio","senamhi","el niño","el nino","ciclón","ciclon","meteorolog")
+        if title and link and any(x in haystack for x in markers) and any(x in haystack for x in climate):
             articles.append({
                 "title":title,"url":link,"domain":source_name,
                 "language":"es","seendate":item.findtext("pubDate"),
