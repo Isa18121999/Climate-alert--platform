@@ -396,7 +396,7 @@ const MEASUREMENT_SAVE_MS=5*60*1000;
 
 async function saveCurrentMeasurement(latNumber,lonNumber,rainValue,riverValue){
   const base=api();
-  if(!base) return;
+  const backupApi='https://climate-alert-platform-api.onrender.com';
   const now=Date.now();
   try{
     const last=Number(localStorage.getItem(MEASUREMENT_CACHE_KEY)||0);
@@ -412,16 +412,33 @@ async function saveCurrentMeasurement(latNumber,lonNumber,rainValue,riverValue){
       location:{lat:latNumber,lon:lonNumber}
     };
 
-    const response=await fetch(base+'/measurements',{
-      method:'POST',
-      headers:{'content-type':'application/json'},
-      body:JSON.stringify(payload)
-    });
-    if(!response.ok) throw new Error('HTTP '+response.status);
-    localStorage.setItem(MEASUREMENT_CACHE_KEY,String(now));
-    localStorage.setItem(MEASUREMENT_CACHE_KEY+'_loc',latNumber.toFixed(4)+','+lonNumber.toFixed(4));
+    let saved=false;
+    try{
+      if(base){
+        const response=await fetch(base+'/measurements',{
+          method:'POST',
+          headers:{'content-type':'application/json'},
+          body:JSON.stringify(payload)
+        });
+        saved=response.ok;
+      }
+    }catch(e){ console.warn('AWS no guardó la medición:',e); }
+
+    try{
+      const backup=await fetch(backupApi+'/measurements',{
+        method:'POST',
+        headers:{'content-type':'application/json'},
+        body:JSON.stringify(payload)
+      });
+      saved=saved||backup.ok;
+    }catch(e){ console.warn('Respaldo de medición no disponible:',e); }
+
+    if(saved){
+      localStorage.setItem(MEASUREMENT_CACHE_KEY,String(now));
+      localStorage.setItem(MEASUREMENT_CACHE_KEY+'_loc',latNumber.toFixed(4)+','+lonNumber.toFixed(4));
+    }
   }catch(e){
-    console.warn('No se pudo guardar la medición en la nube:',e);
+    console.warn('No se pudo guardar la medición:',e);
   }
 }
 
@@ -663,10 +680,20 @@ async function loadAWS(){
     if(mRes.status==='fulfilled'){
       const m=mRes.value;
       items=m.items||[];
-      $('measurements').textContent=items.length+' mediciones recibidas desde DynamoDB.';
+    }else{
+      try{
+        const backupMeasurements=await q('https://climate-alert-platform-api.onrender.com/measurements',8000);
+        items=backupMeasurements.items||[];
+      }catch(e){
+        items=[];
+      }
+    }
+    if(items.length){
+      $('measurements').textContent=items.length+' mediciones registradas.';
       $('rows').innerHTML=items.slice(0,10).map(x=>'<tr><td>'+(x.station_id||'—')+'</td><td>'+((x.rain_mm_h??'—'))+'</td><td>'+((x.river_level_m??'—'))+'</td><td>'+riskBadge(x.risk_level||'—')+'</td></tr>').join('');
     }else{
-      $('measurements').textContent='No se pudieron consultar las mediciones de DynamoDB.';
+      $('measurements').textContent='Aún no hay mediciones registradas.';
+      $('rows').innerHTML='';
     }
 
     const a=aRes.status==='fulfilled'?aRes.value:{items:[]};
