@@ -5,23 +5,19 @@ from datetime import datetime, timezone
 from typing import Any, Iterable
 from urllib.parse import urlparse
 
-# "alerta" by itself is intentionally NOT enough: it produces political,
-# social and international false positives. A relevant article must mention
-# a concrete climate/emergency phenomenon and a Peru-specific signal.
 PERU_CLIMATE_TERMS = (
     "lluvia", "lluvias", "precipit", "inund", "desborde", "huaico", "huayco",
     "tormenta", "crecida", "caudal", "quebrada", "deslizamiento", "rio", "río",
     "senamhi", "fenomeno el nino", "fenómeno el niño", "el nino costero", "el niño costero",
-    "ciclon", "ciclón", "meteorolog", "meteorológ", "temperatura extrema", "oleaje",
-    "granizo", "helada", "friaje", "viento fuerte", "vientos fuertes", "temperatura maxima",
-    "temperatura máxima", "temperatura minima", "temperatura mínima",
+    "ciclon", "ciclón", "meteorolog", "meteorológ", "temperatura", "oleaje", "granizo",
+    "helada", "friaje", "viento fuerte", "vientos fuertes", "temperatura extrema", "enfen",
 )
 PERU_SIGNALS = (
     "perú", "peru", "senamhi", "indeci", "lima", "callao", "piura", "tumbes", "chiclayo",
     "lambayeque", "la libertad", "trujillo", "ancash", "áncash", "huánuco", "huanuco",
     "pasco", "junín", "junin", "ica", "arequipa", "moquegua", "tacna", "cusco", "cuzco",
     "puno", "ayacucho", "apurímac", "apurimac", "huancavelica", "amazonas", "cajamarca",
-    "san martín", "san martin", "ucayali", "madre de dios", "loreto", "apurimac",
+    "san martín", "san martin", "ucayali", "madre de dios", "loreto",
 )
 GENERIC_TERMS = (
     "horoscopo", "horóscopo", "deportes", "entretenimiento", "farándula", "farandula",
@@ -38,15 +34,18 @@ def is_peruvian_climate_article(article: dict[str, Any]) -> bool:
     text = " ".join(str(article.get(k) or "") for k in ("title", "description", "summary", "category")).lower()
     if not any(term in text for term in PERU_CLIMATE_TERMS):
         return False
-    if not any(term in text for term in PERU_SIGNALS):
-        return False
-    if any(term in text for term in GENERIC_TERMS):
-        return False
     source = str(article.get("source") or article.get("publisher") or "").lower()
     url = str(article.get("url") or article.get("link") or "")
     host = urlparse(url).netloc.lower()
     allowed = any(host == d.lstrip(".") or host.endswith(d) for d in ALLOWED_PERU_DOMAINS)
-    named = any(name in source for name in ("rpp", "el comercio", "la república", "la republica", "andina", "gestión", "gestion", "perú21", "peru21"))
+    named = any(name in source for name in ("rpp", "el comercio", "la república", "la republica", "andina", "gestión", "gestion", "perú21", "peru21", "senamhi"))
+    # Approved Peruvian media/SENAMHI is itself a Peru signal. This avoids
+    # dropping valid Peru climate headlines that omit the word "Perú".
+    peru_signal = any(term in text for term in PERU_SIGNALS) or allowed or named
+    if not peru_signal:
+        return False
+    if any(term in text for term in GENERIC_TERMS):
+        return False
     return allowed or named
 
 
