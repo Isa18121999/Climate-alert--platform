@@ -686,11 +686,22 @@ async function loadAWS(){
       return '';
     };
 
-    const renderOfficial=(items, past=false)=>items.slice(0,12).map(x=>{
+    const renderOfficial=(items,past=false)=>items.slice(0,12).map(x=>{
       const cls=levelClass(x.level);
       const badgeCls=cls==='critical'?'danger':cls==='high'?'danger':cls==='medium'?'warn':'ok';
       const statusLabel=past?'FINALIZADO':'ACTUAL';
-      return '<div class="alert-card official '+cls+'"><div><span class="badge '+badgeCls+'">'+(past?'HISTÓRICO':statusLabel)+'</span> <span class="alert-title">'+(x.title||'Aviso oficial SENAMHI')+'</span></div><div class="alert-meta">SENAMHI · N.º '+(x.number||'—')+' · Inicio: '+(x.start_at||'—')+' · Fin: '+(x.end_at||'—')+(past?' · Aviso pasado':' · Aviso vigente')+'</div><a class="alert-link" href="'+(x.url||'https://www.senamhi.gob.pe/?p=avisos')+'" target="_blank" rel="noopener">Ver aviso oficial</a></div>').join('');
+      const title=x.title||'Aviso oficial SENAMHI';
+      const number=x.number||'—';
+      const start=x.start_at||'—';
+      const end=x.end_at||'—';
+      const url=x.url||'https://www.senamhi.gob.pe/?p=avisos';
+      return `<div class="alert-card official ${cls}">
+        <div><span class="badge ${badgeCls}">${past?'HISTÓRICO':statusLabel}</span>
+        <span class="alert-title">${title}</span></div>
+        <div class="alert-meta">SENAMHI · N.º ${number} · Inicio: ${start} · Fin: ${end}${past?' · Aviso pasado':' · Aviso vigente'}</div>
+        <a class="alert-link" href="${url}" target="_blank" rel="noopener">Ver aviso oficial</a>
+      </div>`;
+    }).join('');
 
     $('officialAlerts').innerHTML=renderOfficial(currentOfficial)||'<div class="empty">No hay avisos oficiales vigentes en este momento.</div>';
     $('pastOfficialAlerts').innerHTML=renderOfficial(pastOfficial,true)||'<div class="empty">No hay avisos oficiales pasados disponibles.</div>';
