@@ -68,38 +68,27 @@ def flood(lat: float, lon: float) -> dict:
 
 
 def _gdelt_live_rss(query: str) -> dict:
-    # GDELT Article List RSS is a rolling live feed updated every minute.
-    # We filter the feed locally because the DOC JSON endpoint may rate-limit bursts.
+    # Feed de noticias de GDELT actualizado continuamente.
     url = os.getenv("GDELT_GAL_RSS", "https://data.gdeltproject.org/gdeltv3/gal/feed.rss")
     request = Request(
         url,
-        headers={"User-Agent": "propuesta1-alerta-temprana/1.0"},
+        headers={"User-Agent": "ClimateAlertPlatform/1.0"},
     )
-    with urlopen(request, timeout=10) as response:
+    with urlopen(request, timeout=8) as response:
         root = ET.fromstring(response.read())
 
-    terms = [x.strip().lower() for x in query.replace(",", " ").split() if x.strip()]
     articles = []
     for item in root.findall(".//item"):
         title = item.findtext("title") or ""
         link = item.findtext("link") or ""
         source = item.find("source")
         source_name = source.text if source is not None else None
-        haystack = title.lower()
-        link_lower = link.lower()
-        climate_terms = (
-            "lluvia", "lluvias", "precipit", "inund", "desborde",
-            "huaico", "huayco", "tormenta", "caudal", "quebrada",
-            "río", "rio", "el niño", "el nino"
-        )
-        peru_terms = ("peru", "perú", "senamhi", ".pe/", ".pe")
-        has_climate = any(term in haystack for term in climate_terms)
-        has_peru = any(
-            term in haystack or term in link_lower or term in (source_name or "").lower()
-            for term in peru_terms
-        )
-        if not has_climate or not has_peru:
+        haystack = (title + " " + link + " " + (source_name or "")).lower()
+
+        peru_markers = ("perú", "peru", ".pe/", ".pe", "lima", "piura", "arequipa", "trujillo", "cusco")
+        if not any(term in haystack for term in peru_markers):
             continue
+
         articles.append({
             "title": title,
             "url": link,
@@ -112,12 +101,12 @@ def _gdelt_live_rss(query: str) -> dict:
             break
 
     return {
-        "source": "GDELT Article List RSS (fallback)",
+        "source": "GDELT Live RSS",
         "source_url": url,
         "fetched_at": datetime.now(timezone.utc).isoformat(),
         "query": query,
         "articles": articles,
-        "source_update_note": "Fallback a GDELT Article List RSS. El feed tiene una ventana móvil de aproximadamente 15 minutos y se actualiza cada 60 segundos.",
+        "source_update_note": "Noticias nacionales recientes desde el feed de GDELT.",
     }
 
 
@@ -167,8 +156,22 @@ def _google_news_rss(query: str) -> dict:
     }
 
 
-def news(query: str = "Peru inundación lluvias El Niño") -> dict:
+def news(query: str = "Perú") -> dict:
     errors = []
+
+    # Priorizar el feed en vivo: evita el 429 frecuente de GDELT DOC.
+    try:
+        live = _gdelt_live_rss(query)
+        if live.get("articles"):
+            return live
+        errors.append("GDELT Live RSS sin resultados")
+    except Exception as exc:
+        errors.append(f"GDELT Live RSS: {exc}")
+
+    try:
+        return _google_news_rss(query)
+    except Exception as exc:
+        errors.append(f"Google News RSS: {exc}")
 
     try:
         data = _get_json(
@@ -180,22 +183,18 @@ def news(query: str = "Peru inundación lluvias El Niño") -> dict:
                 "maxrecords": 20,
                 "sort": "HybridRel",
                 "timespan": "24h",
-                "sourcelang": "spanish",
+                "sourcelang": "Spanish",
             },
-            timeout=10,
+            timeout=8,
         )
-        articles = []
-        for item in data.get("articles", []):
-            articles.append(
-                {
-                    "title": item.get("title"),
-                    "url": item.get("url"),
-                    "domain": item.get("domain"),
-                    "language": item.get("language"),
-                    "seendate": item.get("seendate"),
-                    "socialimage": item.get("socialimage"),
-                }
-            )
+        articles = [{
+            "title": item.get("title"),
+            "url": item.get("url"),
+            "domain": item.get("domain"),
+            "language": item.get("language"),
+            "seendate": item.get("seendate"),
+            "socialimage": item.get("socialimage"),
+        } for item in data.get("articles", [])]
         if articles:
             return {
                 "source": "GDELT DOC 2.0",
@@ -203,26 +202,11 @@ def news(query: str = "Peru inundación lluvias El Niño") -> dict:
                 "fetched_at": datetime.now(timezone.utc).isoformat(),
                 "query": query,
                 "articles": articles,
-                "source_update_note": "GDELT se utiliza como fuente principal de monitoreo de noticias.",
+                "source_update_note": "GDELT DOC como respaldo.",
             }
-        errors.append("GDELT sin resultados")
+        errors.append("GDELT DOC sin resultados")
     except Exception as exc:
-        errors.append(f"GDELT: {exc}")
-
-    try:
-        return _google_news_rss(query)
-    except Exception as exc:
-        errors.append(f"Google News RSS: {exc}")
-
-    try:
-        fallback = _gdelt_live_rss(query)
-        fallback["source_update_note"] = (
-            "Respaldo final de GDELT Article List RSS. "
-            + "; ".join(errors)
-        )
-        return fallback
-    except Exception as exc:
-        errors.append(f"GDELT RSS: {exc}")
+        errors.append(f"GDELT DOC: {exc}")
 
     return {
         "source": "News fallback",
@@ -230,5 +214,5 @@ def news(query: str = "Peru inundación lluvias El Niño") -> dict:
         "fetched_at": datetime.now(timezone.utc).isoformat(),
         "query": query,
         "articles": [],
-        "source_update_note": "No fue posible consultar las fuentes de noticias: " + "; ".join(errors),
+        "source_update_note": "No se pudo consultar ninguna fuente: " + "; ".join(errors),
     }
