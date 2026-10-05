@@ -156,7 +156,7 @@ def _google_news_rss(query: str) -> dict:
     }
 
 
-def news(query: str = "Perú") -> dict:
+def news(query: str = "Perú alerta climática lluvias inundaciones desbordes huaicos SENAMHI") -> dict:
     errors = []
 
     # Priorizar el feed en vivo: evita el 429 frecuente de GDELT DOC.
