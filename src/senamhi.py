@@ -22,17 +22,33 @@ def _parse_datetime(value: str) -> datetime | None:
     if not value:
         return None
     text = value.strip().lower()
-    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"[–—]", "-", text)
+    text = re.sub(r"\bhoras?\b", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+
+    # Formatos ISO/numéricos usados por la tabla nacional de SENAMHI.
     for fmt in (
-        "%d/%m/%Y %H:%M", "%d-%m-%Y %H:%M", "%d/%m/%Y", "%d-%m-%Y",
-        "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M:%S",
+        "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M",
+        "%d-%m-%Y %H:%M:%S", "%d-%m-%Y %H:%M",
+        "%d/%m/%Y", "%d-%m-%Y",
+        "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M",
+        "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M",
+        "%Y-%m-%d",
     ):
         try:
             return datetime.strptime(text[:19], fmt).replace(tzinfo=timezone.utc)
         except ValueError:
             pass
 
-    match = re.search(r"(\d{1,2})\s+de\s+([a-záéíóú]+)\s+(?:de\s+)?(\d{4})(?:\s+(\d{1,2}):(\d{2}))?", text)
+    # Formatos de Aviso 24h, por ejemplo:
+    # "Lunes 6 julio 2026 - 13:00 horas"
+    # "6 julio 2026 - 13:00"
+    match = re.search(
+        r"(?:lunes|martes|miércoles|miercoles|jueves|viernes|sábado|sabado|domingo)?\s*"
+        r"(\d{1,2})\s+(?:de\s+)?([a-záéíóú]+)\s+(?:de\s+)?(\d{4})"
+        r"(?:\s*[-,]\s*(\d{1,2}):(\d{2}))?",
+        text,
+    )
     if match:
         day, month_name, year, hour, minute = match.groups()
         month = MONTHS_ES.get(month_name)
@@ -64,7 +80,13 @@ def _alert_status(alert: dict, now: datetime) -> str:
             if now < start:
                 return "PROXIMO"
             return "PASADO"
+        # Avisos sin fin explícito: se consideran próximos o actuales,
+        # pero nunca se convierten en históricos sin evidencia temporal.
         return "ACTUAL" if start <= now else "PROXIMO"
+
+    # Si sólo conocemos el fin, podemos clasificarlo como pasado con seguridad.
+    if end:
+        return "PASADO" if end < now else "ACTUAL"
 
     return "SIN_FECHA"
 
@@ -127,7 +149,11 @@ def _parse_national_table(html: str) -> list[dict]:
                 return cells[i] if i is not None and i < len(cells) else default
 
             title = get("aviso")
-            if not title or title.lower() == "aviso" or not _relevant(title):
+            # El historial oficial debe conservar todos los tipos de aviso
+            # (lluvia, viento, temperatura, nieve, etc.) para poder mostrar
+            # también avisos pasados. El filtro temático se aplica en otras
+            # secciones del dashboard.
+            if not title or title.lower() == "aviso":
                 continue
 
             number = get("nro.") or get("nro") or get("número")
