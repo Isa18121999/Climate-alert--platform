@@ -4,9 +4,9 @@ import os
 import sys
 from datetime import datetime, timezone
 from uuid import uuid4
+from urllib.parse import urlparse
 
 import requests
-import xml.etree.ElementTree as ET
 import xml.etree.ElementTree as ET
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -19,7 +19,6 @@ CORS(app)
 
 OPEN_METEO_FORECAST = os.getenv("OPEN_METEO_FORECAST", "https://api.open-meteo.com/v1/forecast")
 OPEN_METEO_FLOOD = os.getenv("OPEN_METEO_FLOOD", "https://flood-api.open-meteo.com/v1/flood")
-GDELT_DOC = os.getenv("GDELT_DOC", "https://api.gdeltproject.org/api/v2/doc/doc")
 DEFAULT_LAT = float(os.getenv("DEFAULT_LAT", "-5.1945"))
 DEFAULT_LON = float(os.getenv("DEFAULT_LON", "-80.6328"))
 DEFAULT_STATION_ID = os.getenv("DEFAULT_STATION_ID", "PIURA-DEMO")
@@ -28,6 +27,19 @@ measurements: list[dict] = []
 alerts: list[dict] = []
 official_alert_cache: list[dict] = []
 
+PERU_MEDIA_DOMAINS = (
+    "rpp.pe", "elcomercio.pe", "larepublica.pe", "andina.pe", "gestion.pe", "peru21.pe",
+)
+CLIMATE_TERMS = (
+    "alerta", "lluvia", "lluvias", "precipit", "inund", "desborde", "huaico", "huayco",
+    "tormenta", "crecida", "caudal", "quebrada", "deslizamiento", "río", "rio", "senamhi",
+    "fenómeno el niño", "fenomeno el nino", "ciclón", "ciclon", "meteorológ", "meteorolog",
+    "temperatura extrema", "oleaje", "granizo", "helada", "friaje",
+)
+GENERIC_TERMS = (
+    "horóscopo", "horoscopo", "deportes", "entretenimiento", "farándula", "farandula", "informativa",
+)
+
 
 def get_json(url: str, params: dict, timeout: int = 10) -> dict:
     r = requests.get(url, params=params, timeout=timeout, headers={"User-Agent": "climate-alert-platform/1.0"})
@@ -35,36 +47,14 @@ def get_json(url: str, params: dict, timeout: int = 10) -> dict:
     return r.json()
 
 
-def google_news_rss(query: str) -> list[dict]:
-    r = requests.get(
-        "https://news.google.com/rss/search",
-        params={"q": query, "hl": "es-419", "gl": "PE", "ceid": "PE:es-419"},
-        timeout=10,
-        headers={"User-Agent": "climate-alert-platform/1.0"},
-    )
-    r.raise_for_status()
-    root = ET.fromstring(r.content)
-    articles = []
-    for item in root.findall(".//item"):
-        title = item.findtext("title") or ""
-        link = item.findtext("link") or ""
-        pub_date = item.findtext("pubDate")
-        source = item.find("source")
-        source_name = source.text if source is not None else None
-        if title and link:
-            articles.append({
-                "title": title,
-                "url": link,
-                "domain": source_name,
-                "language": "es",
-                "seendate": pub_date,
-                "socialimage": None,
-                "country": "PE",
-                "region": "Perú",
-            })
-        if len(articles) >= 20:
-            break
-    return articles
+def _allowed_peru_source(url: str) -> bool:
+    host = urlparse(url).netloc.lower().split(":")[0]
+    return any(host == domain or host.endswith("." + domain) for domain in PERU_MEDIA_DOMAINS)
+
+
+def _is_climate_article(title: str, description: str = "", category: str = "") -> bool:
+    text = f"{title} {description} {category}".lower()
+    return any(term in text for term in CLIMATE_TERMS) and not any(term in text for term in GENERIC_TERMS)
 
 
 def peruvian_climate_rss_news() -> list[dict]:
@@ -73,39 +63,29 @@ def peruvian_climate_rss_news() -> list[dict]:
         ("El Comercio", "https://elcomercio.pe/arc/outboundfeeds/rss/category/peru/?outputType=xml"),
         ("El Comercio Lima", "https://elcomercio.pe/arc/outboundfeeds/rss/category/lima/?outputType=xml"),
     ]
-    climate = ("alerta", "lluvia", "lluvias", "precipit", "inund", "desborde",
-               "huaico", "huayco", "tormenta", "crecida", "caudal",
-               "quebrada", "deslizamiento", "río", "rio", "senamhi",
-               "fenómeno el niño", "fenomeno el nino", "ciclón", "ciclon",
-               "meteorológ", "meteorolog", "temperatura extrema")
-    excluded = ("portada", "horóscopo", "horoscopo", "deportes", "entretenimiento")
-    articles = []
-    seen = set()
+    articles: list[dict] = []
+    seen: set[str] = set()
 
     for source_label, feed_url in feeds:
         try:
-            r = requests.get(
-                feed_url,
-                timeout=10,
-                headers={"User-Agent": "climate-alert-platform/1.0"}
-            )
+            r = requests.get(feed_url, timeout=10, headers={"User-Agent": "ClimateAlertPlatform/1.0 (+academic-project)"})
             r.raise_for_status()
             root = ET.fromstring(r.content)
             for item in root.findall(".//item"):
                 title = (item.findtext("title") or "").strip()
                 link = (item.findtext("link") or "").strip()
-                pub_date = item.findtext("pubDate")
                 description = item.findtext("description") or ""
-                text = (title + " " + description).lower()
+                pub_date = item.findtext("pubDate")
+                category = " ".join(x.text or "" for x in item.findall("category"))
 
                 if not title or not link:
                     continue
-                if any(x in text for x in excluded):
+                if not _allowed_peru_source(link):
                     continue
-                if not any(x in text for x in climate):
+                if not _is_climate_article(title, description, category):
                     continue
 
-                key = link or title
+                key = link.lower()
                 if key in seen:
                     continue
                 seen.add(key)
@@ -113,45 +93,19 @@ def peruvian_climate_rss_news() -> list[dict]:
                     "title": title,
                     "url": link,
                     "domain": source_label,
+                    "source": source_label,
                     "language": "es",
                     "seendate": pub_date,
                     "socialimage": None,
                     "country": "PE",
                     "region": "Perú",
+                    "category": category or "Clima",
                 })
                 if len(articles) >= 20:
                     return articles
         except Exception as exc:
             print(f"RSS {source_label}: {exc}")
 
-    return articles
-
-
-def gdelt_live_news(query: str) -> list[dict]:
-    r = requests.get(
-        "https://data.gdeltproject.org/gdeltv3/gal/feed.rss",
-        timeout=8,
-        headers={"User-Agent": "climate-alert-platform/1.0"},
-    )
-    r.raise_for_status()
-    root = ET.fromstring(r.content)
-    articles=[]
-    for item in root.findall(".//item"):
-        title=item.findtext("title") or ""
-        link=item.findtext("link") or ""
-        source=item.find("source")
-        source_name=source.text if source is not None else None
-        haystack=(title+" "+link+" "+(source_name or "")).lower()
-        markers=("perú","peru",".pe/","lima","piura","arequipa","trujillo","cusco")
-        climate=("alerta","climática","climatica","lluvia","lluvias","precipit","inund","desborde","huaico","huayco","tormenta","crecida","caudal","quebrada","deslizamiento","río","rio","senamhi","el niño","el nino","ciclón","ciclon","meteorolog")
-        if title and link and any(x in haystack for x in markers) and any(x in haystack for x in climate):
-            articles.append({
-                "title":title,"url":link,"domain":source_name,
-                "language":"es","seendate":item.findtext("pubDate"),
-                "socialimage":None,
-            })
-        if len(articles)>=20:
-            break
     return articles
 
 
@@ -242,51 +196,17 @@ def flood():
 @app.get("/news")
 def news():
     query = request.args.get("q", "Perú alerta climática lluvias inundaciones desbordes huaicos SENAMHI")
-
-    try:
-        articles = peruvian_climate_rss_news()
-        if articles:
-            return jsonify({
-                "source": "RSS medios peruanos",
-                "fetched_at": datetime.now(timezone.utc).isoformat(),
-                "query": query,
-                "articles": articles,
-            })
-    except Exception as exc:
-        print(f"RSS medios peruanos: {exc}")
-
-    try:
-        articles = gdelt_live_news(query)
-        if articles:
-            return jsonify({
-                "source": "GDELT Live RSS",
-                "fetched_at": datetime.now(timezone.utc).isoformat(),
-                "query": query,
-                "articles": articles,
-            })
-    except Exception as exc:
-        print(f"GDELT Live RSS: {exc}")
-
-    try:
-        articles = google_news_rss(query)
-        if articles:
-            return jsonify({
-                "source": "Google News RSS",
-                "fetched_at": datetime.now(timezone.utc).isoformat(),
-                "query": query,
-                "articles": articles,
-            })
-    except Exception as exc:
-        print(f"Google News RSS: {exc}")
-
+    articles = peruvian_climate_rss_news()
     return jsonify({
-        "source": "News fallback",
+        "source": "RSS medios peruanos",
         "fetched_at": datetime.now(timezone.utc).isoformat(),
         "query": query,
-        "articles": [],
-        "source_update_note": "No se encontraron noticias disponibles en este momento.",
+        "articles": articles,
+        "source_update_note": (
+            "Solo noticias climáticas de medios peruanos. "
+            "No se muestran noticias internacionales, genéricas ni de categoría Informativa."
+        ) if not articles else "Noticias climáticas recientes de medios peruanos mediante RSS.",
     })
-
 
 
 @app.get("/official-alerts")
