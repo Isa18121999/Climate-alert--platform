@@ -12,7 +12,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#eef5f8}ifr
 </style>
 </head>
 <body>
-<iframe id="app" src="index-original.html" title="Climate Alert Platform"></iframe>
+<iframe id="app" src="index-original.html?v=20261005-history2" title="Climate Alert Platform"></iframe>
 <script>
 const HIST=[
 ['269','INCREMENTO DE VIENTO EN LA SIERRA NORTE','2026-07-07','2026-07-09','NARANJA'],
@@ -33,7 +33,8 @@ function fixHistory(){
   const title=d.getElementById('pastOfficialTitle');
   const status=d.getElementById('alertsStatus');
   const html=HIST.map(x=>{const orange=x[4]==='NARANJA';return '<div class="alert-card official '+(orange?'high':'medium')+'"><div><span class="badge '+(orange?'danger':'warn')+'">HISTÓRICO</span> <span class="alert-title">'+x[1]+'</span></div><div class="alert-meta">SENAMHI · N.º '+x[0]+' · Inicio: '+x[2]+' · Fin: '+x[3]+' · Aviso pasado</div><a class="alert-link" href="https://web2.senamhi.gob.pe/?p=avisos" target="_blank" rel="noopener">Ver aviso oficial</a></div>'}).join('');
-  if(box && (!box.children.length || box.dataset.fixed!=='1')){box.innerHTML=html;box.dataset.fixed='1'}
+  const empty=box && (box.children.length===0 || box.querySelector('.empty') || /No hay avisos oficiales pasados disponibles/i.test(box.textContent||''));
+  if(empty){box.innerHTML=html;box.dataset.fixed='1'}
   if(title)title.style.display='block';
   if(status){
     status.textContent=status.textContent.replace(/\s*·\s*alertas calculadas.*$/i,'');
