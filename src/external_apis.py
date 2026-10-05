@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime, timezone
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
@@ -13,13 +14,11 @@ OPEN_METEO_FLOOD = os.getenv("OPEN_METEO_FLOOD", "https://flood-api.open-meteo.c
 PERU_CLIMATE_TERMS = (
     "alerta", "lluvia", "lluvias", "precipit", "inund", "desborde", "huaico", "huayco",
     "tormenta", "crecida", "caudal", "quebrada", "deslizamiento", "río", "rio", "senamhi",
-    "fenómeno el niño", "fenomeno el nino", "ciclón", "ciclon", "meteorológ", "meteorolog",
-    "temperatura extrema", "oleaje", "granizo", "helada", "friaje",
+    "fenómeno el niño", "fenomeno el nino", "el niño costero", "el nino costero", "ciclón", "ciclon",
+    "meteorológ", "meteorolog", "temperatura extrema", "oleaje", "granizo", "helada", "friaje",
 )
 GENERIC_TERMS = ("horóscopo", "horoscopo", "deportes", "entretenimiento", "farándula", "farandula", "informativa")
-PERU_MEDIA = (
-    "rpp.pe", "elcomercio.pe", "larepublica.pe", "andina.pe", "gestion.pe", "peru21.pe",
-)
+PERU_MEDIA = ("rpp.pe", "elcomercio.pe", "larepublica.pe", "andina.pe", "gestion.pe", "peru21.pe")
 
 
 def _get_json(url: str, params: dict, timeout: int = 8) -> dict:
@@ -57,9 +56,24 @@ def _allowed_peru_source(url: str, source: str) -> bool:
     return any(host == d or host.endswith("." + d) for d in PERU_MEDIA) or any(d in source for d in PERU_MEDIA)
 
 
+def _clean_text(value: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", value or "")).strip()
+
+
 def _is_climate_item(title: str, description: str = "", category: str = "") -> bool:
     text = f"{title} {description} {category}".lower()
     return any(term in text for term in PERU_CLIMATE_TERMS) and not any(term in text for term in GENERIC_TERMS)
+
+
+def _significance(title: str, description: str = "") -> str:
+    text = f"{title} {description}".lower()
+    if re.search(r"desborde|inundaci[oó]n|huaico|huayco|r[ií]o .*desborda|emergencia|evacuaci[oó]n|damnificad", text):
+        return "CRITICA"
+    if re.search(r"lluvia extrema|lluvias intensas|precipitaciones intensas|alerta|activaci[oó]n de quebrada|caudal|crecida|tormenta|cicl[oó]n|el ni[nñ]o costero|fen[oó]meno el ni[nñ]o|pron[oó]stico", text):
+        return "ALTA"
+    if re.search(r"lluvia|lluvias|precipitaci[oó]n|meteorolog|temperatura extrema", text):
+        return "MEDIA"
+    return "INFORMATIVA"
 
 
 def _peruvian_climate_rss(query: str) -> dict:
@@ -76,9 +90,9 @@ def _peruvian_climate_rss(query: str) -> dict:
             with urlopen(request, timeout=10) as response:
                 root = ET.fromstring(response.read())
             for item in root.findall(".//item"):
-                title = (item.findtext("title") or "").strip()
+                title = _clean_text(item.findtext("title") or "")
                 link = (item.findtext("link") or "").strip()
-                description = item.findtext("description") or ""
+                description = _clean_text(item.findtext("description") or "")
                 pub_date = item.findtext("pubDate")
                 category = " ".join(x.text or "" for x in item.findall("category"))
                 if not title or not link or not _is_climate_item(title, description, category):
@@ -91,8 +105,10 @@ def _peruvian_climate_rss(query: str) -> dict:
                 seen.add(key)
                 articles.append({
                     "title": title, "url": link, "domain": source_label, "source": source_label,
-                    "language": "es", "seendate": pub_date, "socialimage": None,
-                    "country": "PE", "region": "Perú", "category": category or "Clima",
+                    "language": "es", "seendate": pub_date, "published_at": pub_date,
+                    "description": description, "summary": description,
+                    "socialimage": None, "country": "PE", "region": "Perú",
+                    "category": category or "Clima", "severity": _significance(title, description),
                 })
                 if len(articles) >= 20:
                     break
@@ -101,17 +117,18 @@ def _peruvian_climate_rss(query: str) -> dict:
         if len(articles) >= 20:
             break
 
+    articles.sort(key=lambda a: str(a.get("published_at") or ""), reverse=True)
     return {
         "source": "RSS medios peruanos", "source_url": "https://rpp.pe/rss-titulares.xml",
         "fetched_at": datetime.now(timezone.utc).isoformat(), "query": query,
-        "articles": articles,
-        "source_update_note": "Solo noticias climáticas de medios peruanos. No se usan noticias genéricas ni la categoría Informativa.",
+        "articles": articles[:20],
+        "source_update_note": "Solo noticias climáticas de Perú. Se excluyen noticias internacionales, genéricas y de categoría Informativa.",
         "warnings": errors,
     }
 
 
-def news(query: str = "Perú alerta climática lluvias inundaciones desbordes huaicos SENAMHI") -> dict:
-    """Return only Peru climate/emergency news from approved Peruvian media RSS feeds."""
+def news(query: str = "Perú alerta climática lluvias inundaciones desbordes huaicos SENAMHI El Niño Costero") -> dict:
+    """Return only Peru climate/emergency news from approved Peruvian RSS feeds."""
     result = _peruvian_climate_rss(query)
     if result.get("articles"):
         return result
