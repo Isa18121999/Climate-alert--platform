@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 from typing import Any
 
@@ -64,7 +65,7 @@ def _status(alert: dict[str, Any], now: datetime) -> str:
 
 
 def _get_html(url: str) -> str:
-    response = requests.get(url, timeout=20, headers={"User-Agent": "ClimateAlertPlatform/1.0 (+academic-project)"})
+    response = requests.get(url, timeout=5, headers={"User-Agent": "ClimateAlertPlatform/1.0 (+academic-project)"})
     response.raise_for_status()
     response.encoding = response.apparent_encoding or response.encoding
     return response.text
@@ -141,9 +142,20 @@ def _parse_short_term_rain(html: str) -> list[dict]:
 
 def senamhi_alerts() -> dict:
     alerts, errors = [], []
-    for label, url, parser in (("national", SENAMHI_ALERTS_URL, _parse_national_tables), ("short_term_rain", SENAMHI_SHORT_TERM_RAIN_URL, _parse_short_term_rain)):
-        try: alerts.extend(parser(_get_html(url)))
-        except Exception as exc: errors.append(f"{label}: {exc}")
+    # Consultar las dos fuentes en paralelo para que una fuente lenta de SENAMHI
+    # no deje al dashboard bloqueado durante decenas de segundos.
+    sources = [
+        ("national", SENAMHI_ALERTS_URL, _parse_national_tables),
+        ("short_term_rain", SENAMHI_SHORT_TERM_RAIN_URL, _parse_short_term_rain),
+    ]
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = {executor.submit(_get_html, url): (label, parser) for label, url, parser in sources}
+        for future in as_completed(futures):
+            label, parser = futures[future]
+            try:
+                alerts.extend(parser(future.result()))
+            except Exception as exc:
+                errors.append(f"{label}: {exc}")
 
     now_dt = datetime.now(timezone.utc)
     # El portal puede entregar la tabla histórica mediante JS. Mezclamos
