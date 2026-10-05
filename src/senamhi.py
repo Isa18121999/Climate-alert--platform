@@ -158,9 +158,6 @@ def senamhi_alerts() -> dict:
                 errors.append(f"{label}: {exc}")
 
     now_dt = datetime.now(timezone.utc)
-    # El portal puede entregar la tabla histórica mediante JS. Mezclamos
-    # siempre los avisos históricos oficiales conocidos para que la sección
-    # "Avisos pasados" nunca quede vacía por una respuesta HTML incompleta.
     historical = _historical_fallback()
     known_ids = {a.get("id") for a in alerts}
     alerts.extend(a for a in historical if a.get("id") not in known_ids)
@@ -171,14 +168,26 @@ def senamhi_alerts() -> dict:
         alert["status"], alert["is_current"] = status, status == "ACTUAL"
         dedup[alert["id"]] = alert
 
-    ordered = sorted(dedup.values(), key=lambda x: _parse_datetime(str(x.get("end_at", ""))) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+    ordered = sorted(
+        dedup.values(),
+        key=lambda x: _parse_datetime(str(x.get("end_at", ""))) or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
     past = [a for a in ordered if a.get("status") == "PASADO"]
     current = [a for a in ordered if a.get("status") == "ACTUAL"]
+
+    # IMPORTANTE: el dashboard antiguo consume solamente `alerts` y luego
+    # separa actuales/pasados en el navegador. Si SENAMHI devuelve más de 50
+    # avisos recientes, un simple [:50] ocultaba todos los históricos. Reservamos
+    # siempre espacio para avisos pasados, evitando que aparezcan y desaparezcan.
+    non_past = [a for a in ordered if a.get("status") != "PASADO"]
+    display_alerts = (non_past[:40] + past[:10])[:50]
+
     return {
         "source":"SENAMHI",
         "source_url":SENAMHI_ALERTS_URL,
         "fetched_at":now_dt.isoformat(),
-        "alerts":ordered[:50],
+        "alerts":display_alerts,
         "past_alerts":past[:50],
         "current_alerts":current[:50],
         "warnings":errors,
