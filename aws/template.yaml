@@ -1,0 +1,76 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Climate Alert Platform - monitoreo y notificaciones por SNS
+
+Parameters:
+  AlertEmail:
+    Type: String
+    Description: Correo que recibirá las alertas de Climate Alert Platform.
+  ApiBaseUrl:
+    Type: String
+    Default: https://climate-alert-platform-api.onrender.com
+    Description: URL pública del backend que expone /monitor y /official-alerts.
+
+Resources:
+  ClimateAlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: climate-alerts-peru
+      DisplayName: Climate Alert Perú
+
+  ClimateAlertsEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref ClimateAlertsTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  SentAlertsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: climate-alert-sent
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: alert_key
+          AttributeType: S
+      KeySchema:
+        - AttributeName: alert_key
+          KeyType: HASH
+
+  ClimateAlertMonitor:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: climate-alert-monitor
+      CodeUri: .
+      Handler: lambda_alert_monitor.lambda_handler
+      Runtime: python3.12
+      Timeout: 60
+      MemorySize: 256
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: !Ref ClimateAlertsTopic
+          TABLE_NAME: !Ref SentAlertsTable
+          API_BASE_URL: !Ref ApiBaseUrl
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SentAlertsTable
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt ClimateAlertsTopic.TopicName
+      Events:
+        EveryFiveMinutes:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+            Enabled: true
+            Description: Revisa riesgo climático y avisos oficiales de SENAMHI cada 5 minutos.
+
+Outputs:
+  SnsTopicArn:
+    Description: ARN del topic SNS de alertas.
+    Value: !Ref ClimateAlertsTopic
+  LambdaFunctionName:
+    Description: Nombre de la Lambda de monitoreo.
+    Value: !Ref ClimateAlertMonitor
+  DynamoTableName:
+    Description: Tabla de idempotencia de alertas enviadas.
+    Value: !Ref SentAlertsTable
