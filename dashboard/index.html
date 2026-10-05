@@ -702,12 +702,44 @@ async function loadAWS(){
       $('rows').innerHTML='';
     }
 
-    const a=aRes.status==='fulfilled'?aRes.value:{items:[]};
-    const official=officialRes.status==='fulfilled'?officialRes.value:{alerts:[]};
+    let a=aRes.status==='fulfilled'?aRes.value:{items:[]};
+    let official=officialRes.status==='fulfilled'?officialRes.value:{alerts:[]};
+
+    // Fallback del backend Render para no perder avisos históricos
+    // cuando AWS no responde o el navegador bloquea la llamada.
+    if((official.alerts||[]).length===0){
+      try{
+        const backupOfficial=await q('https://climate-alert-platform-api.onrender.com/official-alerts',12000);
+        if((backupOfficial.alerts||[]).length) official=backupOfficial;
+      }catch(e){
+        console.warn('Avisos oficiales Render:',e);
+      }
+    }
+    if((a.items||[]).length===0){
+      try{
+        const backupAlerts=await q('https://climate-alert-platform-api.onrender.com/alerts',8000);
+        if((backupAlerts.items||[]).length) a=backupAlerts;
+      }catch(e){
+        console.warn('Alertas Render:',e);
+      }
+    }
+
     const officialItems=official.alerts||[];
     const generatedItems=(a.items||[]).filter(x=>x.alert_type==='RIESGO_CALCULADO');
+
+    const parsedDate=x=>{
+      const value=x||'';
+      const d=new Date(value.replace(' ','T'));
+      return Number.isNaN(d.getTime())?null:d;
+    };
+    const isPastOfficial=x=>{
+      if(x.status==='PASADO') return true;
+      if(x.status==='ACTUAL' || x.is_current===true) return false;
+      const end=parsedDate(x.end_at);
+      return !!end && end < new Date();
+    };
     const currentOfficial=officialItems.filter(x=>x.status==='ACTUAL' || x.is_current===true);
-    const pastOfficial=officialItems.filter(x=>x.status==='PASADO');
+    const pastOfficial=officialItems.filter(isPastOfficial);
 
     $('alertsStatus').textContent='SENAMHI: '+currentOfficial.length+' vigentes · '+pastOfficial.length+' pasados · alertas calculadas: '+generatedItems.length;
 
