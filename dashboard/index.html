@@ -359,13 +359,19 @@ function isClimateAlertNews(a){
 }
 function classifyNews(a){
   const t=((a.title||'')+' '+(a.description||'')).toLowerCase();
-  if(/desborde|inundaci[oó]n|huaico|emergencia|r[ií]o crece|r[ií]o se desborda/.test(t)) return {label:'CRÍTICA',cls:'critical'};
-  if(/lluvia extrema|lluvias intensas|precipitaciones intensas|alerta|deslizamiento|activaci[oó]n de quebrada/.test(t)) return {label:'ALTA',cls:'high'};
-  if(/lluvia|lluvias|precipitaci[oó]n|pron[oó]stico|llovizna/.test(t)) return {label:'MEDIA',cls:'medium'};
+  if(/desborde|inundaci[oó]n|huaico|huayco|emergencia|r[ií]o crece|r[ií]o se desborda|deslizamiento/.test(t)) return {label:'CRÍTICA',cls:'critical'};
+  if(/lluvia extrema|lluvias intensas|precipitaciones intensas|alerta|activaci[oó]n de quebrada|caudal|crecida|tormenta|cicl[oó]n/.test(t)) return {label:'ALTA',cls:'high'};
+  if(/lluvia|lluvias|precipitaci[oó]n|llovizna/.test(t)) return {label:'MEDIA',cls:'medium'};
   return {label:'INFORMATIVA',cls:'info'};
 }
 
-const NEWS_CACHE_KEY='climate_alert_news_climate_pe_v3';
+function shouldShowNews(a){
+  const t=((a.title||'')+' '+(a.description||'')).toLowerCase();
+  if(/portada|edici[oó]n del d[ií]a|titulares|hor[oó]scopo|entretenimiento|deportes/.test(t)) return false;
+  return isClimateAlertNews(a) && classifyNews(a).label!=='INFORMATIVA';
+}
+
+const NEWS_CACHE_KEY='climate_alert_news_climate_pe_v4';
 const NEWS_CACHE_MS=60*1000;
 let lastNewsArticles=[];
 let lastNewsAt=0;
@@ -376,7 +382,7 @@ function readNewsCache(){
     if(!raw) return;
     const data=JSON.parse(raw);
     if(Array.isArray(data.articles)&&data.articles.length){
-      lastNewsArticles=data.articles;
+      lastNewsArticles=data.articles.filter(shouldShowNews);
       lastNewsAt=Number(data.savedAt||0);
       renderNewsArticles(lastNewsArticles);
     }
@@ -384,13 +390,14 @@ function readNewsCache(){
 }
 
 function saveNewsCache(articles){
-  if(!Array.isArray(articles)||!articles.length) return;
-  lastNewsArticles=articles;
+  const clean=(Array.isArray(articles)?articles:[]).filter(shouldShowNews);
+  if(!clean.length) return;
+  lastNewsArticles=clean;
   lastNewsAt=Date.now();
   try{
     localStorage.setItem(NEWS_CACHE_KEY,JSON.stringify({
       savedAt:lastNewsAt,
-      articles:articles.slice(0,20)
+      articles:clean.slice(0,20)
     }));
   }catch(e){ console.warn('No se pudo guardar la caché de noticias:',e); }
 }
@@ -447,7 +454,7 @@ async function saveCurrentMeasurement(latNumber,lonNumber,rainValue,riverValue){
 }
 
 function renderNewsArticles(articles){
-  const list=Array.isArray(articles)?articles:[];
+  const list=(Array.isArray(articles)?articles:[]).filter(shouldShowNews);
   $('newsCount').textContent=list.length;
   if(list.length && $('newsStatus')) $('newsStatus').textContent='🟢 Noticias en vivo';
   $('news').innerHTML=list.length
