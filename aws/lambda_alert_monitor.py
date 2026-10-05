@@ -50,6 +50,22 @@ def mark_sent(alert_key: str) -> bool:
         raise
 
 
+def normalize_severity(value: str) -> str:
+    level = str(value or "").upper()
+    mapping = {
+        "AMARILLO": "MODERADA",
+        "MEDIO": "MODERADA",
+        "NARANJA": "FUERTE",
+        "ALTO": "FUERTE",
+        "ROJO": "EXTREMA",
+        "CRITICO": "EXTREMA",
+        "CRÍTICO": "EXTREMA",
+        "BAJO": "BAJA",
+        "VERDE": "BAJA",
+    }
+    return mapping.get(level, level or "NO ESPECIFICADA")
+
+
 def publish_alert(alert: dict, kind: str) -> dict:
     alert_id = str(alert.get("id") or alert.get("alert_id") or "unknown")
     alert_key = f"{kind}:{alert_id}"
@@ -57,16 +73,16 @@ def publish_alert(alert: dict, kind: str) -> dict:
     if already_sent(alert_key):
         return {"status": "duplicate", "alert_key": alert_key}
 
-    level = str(alert.get("level") or alert.get("risk_level") or "").upper()
+    level = normalize_severity(alert.get("level") or alert.get("risk_level"))
     title = str(alert.get("title") or alert.get("name") or alert.get("alert_type") or "Alerta climática")
     message = str(alert.get("message") or alert.get("description") or title)
     source = str(alert.get("source") or ("SENAMHI" if kind == "official" else "Climate Alert Platform"))
 
-    subject = f"Climate Alert Perú | {level or 'ALERTA'}"
+    subject = f"Climate Alert Perú | {level}"
     body = (
         f"ALERTA CLIMÁTICA EN PERÚ\n\n"
         f"Tipo: {kind}\n"
-        f"Nivel: {level or 'No especificado'}\n"
+        f"Nivel: {level}\n"
         f"Evento: {title}\n"
         f"Mensaje: {message}\n"
         f"Fuente: {source}\n"
@@ -87,7 +103,7 @@ def publish_alert(alert: dict, kind: str) -> dict:
             MessageAttributes={
                 "country": {"DataType": "String", "StringValue": "PE"},
                 "alert_kind": {"DataType": "String", "StringValue": kind},
-                "severity": {"DataType": "String", "StringValue": level or "UNKNOWN"},
+                "severity": {"DataType": "String", "StringValue": level},
             },
         )
         return {"status": "sent", "alert_key": alert_key, "message_id": result.get("MessageId")}
@@ -115,9 +131,10 @@ def main(event, context):
         # Riesgo calculado: solo FUERTE/EXTREMA genera notificación externa.
         # BAJA/MODERADA permanece visible en el dashboard sin enviar correo.
         if risk_level in {"ALTO", "CRITICO"}:
+            normalized_level = "EXTREMA" if risk_level == "CRITICO" else "FUERTE"
             risk_alert = {
-                "id": f"aws-risk-{datetime.now(timezone.utc).strftime('%Y%m%d%H')}",
-                "level": "EXTREMA" if risk_level == "CRITICO" else "FUERTE",
+                "id": f"aws-risk-{datetime.now(timezone.utc).strftime('%Y%m%d%H')}-{risk_level}",
+                "level": normalized_level,
                 "alert_type": "RIESGO_CALCULADO",
                 "message": "; ".join(risk_data.get("reasons") or []) or f"Riesgo {risk_level}",
                 "source": "Climate Alert Platform",
