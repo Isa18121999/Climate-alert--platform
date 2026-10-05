@@ -28,19 +28,21 @@ measurements: list[dict] = []
 alerts: list[dict] = []
 official_alert_cache: list[dict] = []
 
-# Fuentes permitidas: únicamente medios peruanos y SENAMHI.
+# Fuentes permitidas: únicamente medios peruanos y fuentes oficiales peruanas.
 PERU_MEDIA_DOMAINS = (
     "rpp.pe", "elcomercio.pe", "larepublica.pe", "andina.pe", "gestion.pe", "peru21.pe",
-    "senamhi.gob.pe", "web2.senamhi.gob.pe",
+    "atv.pe", "tvperu.gob.pe", "canaln.pe", "americatv.com.pe", "senamhi.gob.pe", "web2.senamhi.gob.pe",
+    "gob.pe", "indeci.gob.pe", "mtc.gob.pe", "cultura.gob.pe",
 )
 
-# Una noticia entra solamente si trata un fenómeno/alerta climático.
+# Una noticia entra solamente si trata un fenómeno/alerta climático concreto.
 CLIMATE_TERMS = (
     "alerta", "aviso meteorológico", "aviso meteorologico", "lluvia", "lluvias", "precipit",
     "inund", "desborde", "huaico", "huayco", "tormenta", "crecida", "caudal", "quebrada",
     "deslizamiento", "río", "rio", "senamhi", "ciclón", "ciclon", "meteorológ", "meteorolog",
     "temperatura extrema", "ola de calor", "oleaje", "granizo", "helada", "friaje", "viento fuerte",
-    "fenómeno el niño", "fenomeno el nino", "el niño costero", "el nino costero", "hidrológ", "hidrolog",
+    "vientos fuertes", "fenómeno el niño", "fenomeno el nino", "el niño costero", "el nino costero",
+    "hidrológ", "hidrolog", "precipitaciones intensas", "lluvias intensas", "lluvia extrema",
 )
 
 # Bloqueo explícito de contenido que no pertenece a Climate Alert.
@@ -67,6 +69,25 @@ def _is_climate_article(title: str, description: str = "", category: str = "") -
     return any(term in text for term in CLIMATE_TERMS) and not any(term in text for term in GENERIC_TERMS)
 
 
+def _news_severity(title: str, description: str = "") -> str:
+    text = f"{title} {description}".lower()
+    if any(term in text for term in (
+        "desborde", "inundación", "inundacion", "huaico", "huayco", "evacuación", "evacuacion",
+        "damnificados", "afectados", "emergencia", "río se desborda", "rio se desborda",
+    )):
+        return "CRÍTICA"
+    if any(term in text for term in (
+        "lluvia extrema", "lluvias intensas", "precipitaciones intensas", "alerta", "aviso meteorológico",
+        "aviso meteorologico", "activación de quebrada", "activacion de quebrada", "caudal", "crecida",
+        "tormenta", "ciclón", "ciclon", "fenómeno el niño", "fenomeno el nino", "el niño costero",
+        "el nino costero", "viento fuerte", "vientos fuertes", "oleaje",
+    )):
+        return "ALTA"
+    if any(term in text for term in ("lluvia", "lluvias", "precipitación", "precipitacion", "llovizna")):
+        return "MEDIA"
+    return "INFORMATIVA"
+
+
 def _add_article(articles: list[dict], seen: set[str], title: str, link: str, source_label: str,
                  description: str = "", pub_date: str | None = None, category: str = "") -> None:
     title = BeautifulSoup(title or "", "html.parser").get_text(" ", strip=True)
@@ -75,6 +96,9 @@ def _add_article(articles: list[dict], seen: set[str], title: str, link: str, so
     if not title or not link or not _allowed_peru_source(link):
         return
     if not _is_climate_article(title, description, category):
+        return
+    severity = _news_severity(title, description)
+    if severity == "INFORMATIVA":
         return
     key = link.lower().split("#", 1)[0]
     if key in seen:
@@ -87,10 +111,14 @@ def _add_article(articles: list[dict], seen: set[str], title: str, link: str, so
         "source": source_label,
         "language": "es",
         "seendate": pub_date,
+        "published_at": pub_date,
+        "description": description,
+        "summary": description[:500],
         "socialimage": None,
         "country": "PE",
         "region": "Perú",
         "category": "Clima",
+        "severity": severity,
     })
 
 
@@ -112,7 +140,6 @@ def _parse_tolerant_feed(content: bytes, source_label: str, articles: list[dict]
     except ET.ParseError:
         pass
 
-    # RSS con entidades/XML imperfecto: segundo parser tolerante.
     soup = BeautifulSoup(content, "xml")
     for item in soup.find_all("item"):
         _add_article(
@@ -128,13 +155,12 @@ def _parse_tolerant_feed(content: bytes, source_label: str, articles: list[dict]
 
 def _parse_source_page(content: bytes, page_url: str, source_label: str,
                        articles: list[dict], seen: set[str]) -> None:
-    """Fallback HTML: toma enlaces reales del medio y vuelve a aplicar el filtro climático."""
     soup = BeautifulSoup(content, "html.parser")
     for anchor in soup.find_all("a", href=True):
         title = anchor.get_text(" ", strip=True)
         href = urljoin(page_url, anchor.get("href", "").strip())
         _add_article(articles, seen, title, href, source_label)
-        if len(articles) >= 20:
+        if len(articles) >= 40:
             break
 
 
@@ -148,10 +174,11 @@ def _fetch(url: str, timeout: int = 6) -> bytes:
 
 
 def peruvian_climate_rss_news() -> list[dict]:
-    # RPP y El Comercio aportan noticias periodísticas; SENAMHI aporta la fuente oficial.
+    # Fuentes periodísticas peruanas + páginas oficiales de SENAMHI.
     sources = [
         ("SENAMHI", "https://www.senamhi.gob.pe/?p=prediccion", None),
         ("SENAMHI", "https://www.senamhi.gob.pe/?p=fenomeno-el-nino", None),
+        ("SENAMHI Avisos", "https://www.senamhi.gob.pe/?p=avisos", None),
         ("RPP", "https://rpp.pe/rss-titulares.xml", "https://rpp.pe/fenomenoelnino"),
         ("El Comercio", "https://elcomercio.pe/arc/outboundfeeds/rss/category/peru/?outputType=xml", "https://elcomercio.pe/noticias/senamhi/"),
         ("El Comercio Lima", "https://elcomercio.pe/arc/outboundfeeds/rss/category/lima/?outputType=xml", "https://elcomercio.pe/noticias/senamhi/"),
@@ -169,17 +196,28 @@ def peruvian_climate_rss_news() -> list[dict]:
         except Exception as exc:
             print(f"NEWS {source_label} {feed_or_page}: {exc}")
 
-        if fallback_page and len(articles) < 5:
+        if fallback_page and len(articles) < 10:
             try:
                 content = _fetch(fallback_page)
                 _parse_source_page(content, fallback_page, source_label, articles, seen)
             except Exception as exc:
                 print(f"NEWS FALLBACK {source_label}: {exc}")
 
-        if len(articles) >= 20:
+        if len(articles) >= 40:
             break
 
-    # Mantener primero las noticias con fecha RSS y después las obtenidas de HTML.
+    def sort_key(item: dict):
+        value = item.get("published_at") or item.get("seendate") or ""
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+        except Exception:
+            try:
+                from email.utils import parsedate_to_datetime
+                return parsedate_to_datetime(value).timestamp()
+            except Exception:
+                return 0
+
+    articles.sort(key=sort_key, reverse=True)
     return articles[:20]
 
 
@@ -230,7 +268,7 @@ def news():
         "fetched_at": datetime.now(timezone.utc).isoformat(),
         "query": query,
         "articles": articles,
-        "source_update_note": "Solo noticias climáticas de Perú. Se excluyen noticias internacionales, genéricas y de categoría Informativa."
+        "source_update_note": "Solo noticias climáticas relevantes de Perú. Se excluyen internacionales, genéricas, políticas, deportes, entretenimiento y categoría Informativa."
             if articles else "No se encontraron noticias climáticas válidas en las fuentes peruanas configuradas."
     })
 
