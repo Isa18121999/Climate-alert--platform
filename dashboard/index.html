@@ -12,7 +12,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#eef5f8}ifr
 </style>
 </head>
 <body>
-<iframe id="app" src="index-original.html?v=20261005-severity2" title="Climate Alert Platform"></iframe>
+<iframe id="app" src="index-original.html?v=20261005-senamhi-levels1" title="Climate Alert Platform"></iframe>
 <script>
 const HIST=[
 ['269','INCREMENTO DE VIENTO EN LA SIERRA NORTE','2026-07-07','2026-07-09','NARANJA'],
@@ -32,7 +32,7 @@ function fixHistory(){
   const box=d.getElementById('pastOfficialAlerts');
   const title=d.getElementById('pastOfficialTitle');
   const status=d.getElementById('alertsStatus');
-  const html=HIST.map(x=>{const alta=x[4]==='ROJO',baja=x[4]==='VERDE';const cls=alta?'critical':baja?'':'medium';const badge=alta?'danger':baja?'ok':'warn';const level=alta?'ALTA':baja?'BAJA':'MEDIA';return '<div class="alert-card official '+cls+'"><div><span class="badge '+badge+'">'+level+'</span> <span class="alert-title">'+x[1]+'</span></div><div class="alert-meta">SENAMHI · N.º '+x[0]+' · Inicio: '+x[2]+' · Fin: '+x[3]+' · Aviso pasado</div><a class="alert-link" href="https://web2.senamhi.gob.pe/?p=avisos" target="_blank" rel="noopener">Ver aviso oficial</a></div>'}).join('');
+  const html=HIST.map(x=>{const extrema=x[4]==='ROJO';const cls=extrema?'critical':'medium';const badge=extrema?'danger':'warn';const level=extrema?'EXTREMA':x[4]==='NARANJA'?'FUERTE':'MODERADA';return '<div class="alert-card official '+cls+'"><div><span class="badge '+badge+'">'+level+'</span> <span class="alert-title">'+x[1]+'</span></div><div class="alert-meta">SENAMHI · N.º '+x[0]+' · Inicio: '+x[2]+' · Fin: '+x[3]+' · Aviso pasado</div><a class="alert-link" href="https://web2.senamhi.gob.pe/?p=avisos" target="_blank" rel="noopener">Ver aviso oficial</a></div>'}).join('');
   const empty=box&&(box.children.length===0||box.querySelector('.empty')||/No hay avisos oficiales pasados disponibles/i.test(box.textContent||''));
   if(empty){box.innerHTML=html;box.dataset.fixed='1'}
   if(title)title.style.display='block';
@@ -43,19 +43,22 @@ function normalizeSeverity(){
   let d;try{d=f.contentDocument;if(!d)return}catch(e){return}
   d.querySelectorAll('.alert-card').forEach(card=>{
     const cls=card.className||'';
-    let level=null,badgeClass=null;
-    if(/\bcritical\b/.test(cls)){level='ALTA';badgeClass='danger'}
-    else if(/\bhigh\b/.test(cls)||/\bmedium\b/.test(cls)){level='MEDIA';badgeClass='warn'}
-    else if(/\blow\b/.test(cls)){level='BAJA';badgeClass='ok'}
-    else return;
     const first=card.querySelector('div');
     if(!first)return;
+    const existing=first.querySelector('.badge:not(.severity-badge)');
+    const source=((existing&&existing.textContent)||'').trim().toUpperCase();
+    let level=null,badgeClass=null;
+    if(source.includes('ROJO')||/\bcritical\b/.test(cls)){level='EXTREMA';badgeClass='danger'}
+    else if(source.includes('NARANJA')||/\bhigh\b/.test(cls)){level='FUERTE';badgeClass='warn'}
+    else if(source.includes('AMARILLO')||/\bmedium\b/.test(cls)){level='MODERADA';badgeClass='warn'}
+    else if(source.includes('VERDE')||/\blow\b/.test(cls)){level='BAJA';badgeClass='ok'}
+    else return;
     first.querySelectorAll('.badge').forEach(b=>b.remove());
     const badge=d.createElement('span');
     badge.className='badge severity-badge '+badgeClass;
     badge.textContent=level;
     first.insertBefore(badge,first.firstChild);
-    if(/\bhigh\b/.test(cls)){card.classList.remove('high');card.classList.add('medium')}
+    if(/\bhigh\b/.test(cls)||/\bmedium\b/.test(cls)){card.classList.remove('high');card.classList.add('medium')}
   });
 }
 function fix(){fixHistory();normalizeSeverity()}
