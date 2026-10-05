@@ -2,8 +2,6 @@ name: Fix news labels
 
 on:
   push:
-    paths:
-      - '.github/workflows/fix-news-label.yml'
   workflow_dispatch:
 
 permissions:
@@ -11,6 +9,7 @@ permissions:
 
 jobs:
   fix:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
