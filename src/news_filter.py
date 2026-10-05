@@ -5,14 +5,40 @@ from datetime import datetime, timezone
 from typing import Any, Iterable
 from urllib.parse import urlparse
 
-PERU_CLIMATE_TERMS = ("alerta", "lluvia", "lluvias", "precipit", "inund", "desborde", "huaico", "huayco", "tormenta", "crecida", "caudal", "quebrada", "deslizamiento", "rio", "río", "senamhi", "fenomeno el nino", "fenómeno el niño", "ciclon", "ciclón", "meteorolog", "meteorológ", "temperatura extrema", "oleaje", "granizo", "helada", "friaje")
-GENERIC_TERMS = ("horoscopo", "horóscopo", "deportes", "entretenimiento", "farándula", "farandula", "informativa")
-ALLOWED_PERU_DOMAINS = (".rpp.pe", "rpp.pe", ".elcomercio.pe", "elcomercio.pe", ".larepublica.pe", "larepublica.pe", ".andina.pe", "andina.pe", ".gestion.pe", "gestion.pe", ".peru21.pe", "peru21.pe")
+# "alerta" by itself is intentionally NOT enough: it produces political,
+# social and international false positives. A relevant article must mention
+# a concrete climate/emergency phenomenon and a Peru-specific signal.
+PERU_CLIMATE_TERMS = (
+    "lluvia", "lluvias", "precipit", "inund", "desborde", "huaico", "huayco",
+    "tormenta", "crecida", "caudal", "quebrada", "deslizamiento", "rio", "río",
+    "senamhi", "fenomeno el nino", "fenómeno el niño", "el nino costero", "el niño costero",
+    "ciclon", "ciclón", "meteorolog", "meteorológ", "temperatura extrema", "oleaje",
+    "granizo", "helada", "friaje", "viento fuerte", "vientos fuertes", "temperatura maxima",
+    "temperatura máxima", "temperatura minima", "temperatura mínima",
+)
+PERU_SIGNALS = (
+    "perú", "peru", "senamhi", "indeci", "lima", "callao", "piura", "tumbes", "chiclayo",
+    "lambayeque", "la libertad", "trujillo", "ancash", "áncash", "huánuco", "huanuco",
+    "pasco", "junín", "junin", "ica", "arequipa", "moquegua", "tacna", "cusco", "cuzco",
+    "puno", "ayacucho", "apurímac", "apurimac", "huancavelica", "amazonas", "cajamarca",
+    "san martín", "san martin", "ucayali", "madre de dios", "loreto", "apurimac",
+)
+GENERIC_TERMS = (
+    "horoscopo", "horóscopo", "deportes", "entretenimiento", "farándula", "farandula",
+    "informativa", "política", "politica", "elecciones", "congreso", "partido político",
+    "partido politico", "ideológica", "ideologica", "seguridad y habitación",
+)
+ALLOWED_PERU_DOMAINS = (
+    ".rpp.pe", "rpp.pe", ".elcomercio.pe", "elcomercio.pe", ".larepublica.pe", "larepublica.pe",
+    ".andina.pe", "andina.pe", ".gestion.pe", "gestion.pe", ".peru21.pe", "peru21.pe",
+)
 
 
 def is_peruvian_climate_article(article: dict[str, Any]) -> bool:
     text = " ".join(str(article.get(k) or "") for k in ("title", "description", "summary", "category")).lower()
     if not any(term in text for term in PERU_CLIMATE_TERMS):
+        return False
+    if not any(term in text for term in PERU_SIGNALS):
         return False
     if any(term in text for term in GENERIC_TERMS):
         return False
