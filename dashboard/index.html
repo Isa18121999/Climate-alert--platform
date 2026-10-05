@@ -12,7 +12,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#eef5f8}ifr
 </style>
 </head>
 <body>
-<iframe id="app" src="index-original.html?v=20261005-current-risk2" title="Climate Alert Platform"></iframe>
+<iframe id="app" src="index-original.html?v=20261005-newsfix1" title="Climate Alert Platform"></iframe>
 <script>
 const HIST=[
 ['269','INCREMENTO DE VIENTO EN LA SIERRA NORTE','2026-07-07','2026-07-09','NARANJA'],
@@ -26,27 +26,21 @@ const HIST=[
 ['261','NEVADA EN LA SIERRA CENTRO Y SUR','2026-07-02','2026-07-03','NARANJA'],
 ['260','INCREMENTO DE VIENTO EN LA SIERRA','2026-07-01','2026-07-03','AMARILLO']
 ];
+function getDoc(){const f=document.getElementById('app');try{return f&&f.contentDocument?f.contentDocument:null}catch(e){return null}}
 function fixHistory(){
-  const f=document.getElementById('app');
-  let d;try{d=f.contentDocument;if(!d||!d.getElementById('pastOfficialAlerts'))return}catch(e){return}
-  const box=d.getElementById('pastOfficialAlerts');
-  const title=d.getElementById('pastOfficialTitle');
-  const status=d.getElementById('alertsStatus');
-  const html=HIST.map(x=>{const extrema=x[4]==='ROJO';const cls=extrema?'critical':'medium';const badge=extrema?'danger':'warn';const level=extrema?'EXTREMA':x[4]==='NARANJA'?'FUERTE':'MODERADA';return '<div class="alert-card official '+cls+'"><div><span class="badge '+badge+'">'+level+'</span> <span class="alert-title">'+x[1]+'</span></div><div class="alert-meta">SENAMHI · N.º '+x[0]+' · Inicio: '+x[2]+' · Fin: '+x[3]+' · Aviso pasado</div><a class="alert-link" href="https://web2.senamhi.gob.pe/?p=avisos" target="_blank" rel="noopener">Ver aviso oficial</a></div>'}).join('');
-  const empty=box&&(box.children.length===0||box.querySelector('.empty')||/No hay avisos oficiales pasados disponibles/i.test(box.textContent||''));
+  const d=getDoc();if(!d||!d.getElementById('pastOfficialAlerts'))return;
+  const box=d.getElementById('pastOfficialAlerts'),title=d.getElementById('pastOfficialTitle'),status=d.getElementById('alertsStatus');
+  const html=HIST.map(x=>{const extrema=x[4]==='ROJO',cls=extrema?'critical':'medium',badge=extrema?'danger':'warn',level=extrema?'EXTREMA':x[4]==='NARANJA'?'FUERTE':'MODERADA';return '<div class="alert-card official '+cls+'"><div><span class="badge '+badge+'">'+level+'</span> <span class="alert-title">'+x[1]+'</span></div><div class="alert-meta">SENAMHI · N.º '+x[0]+' · Inicio: '+x[2]+' · Fin: '+x[3]+' · Aviso pasado</div><a class="alert-link" href="https://web2.senamhi.gob.pe/?p=avisos" target="_blank" rel="noopener">Ver aviso oficial</a></div>'}).join('');
+  const empty=box.children.length===0||box.querySelector('.empty')||/No hay avisos oficiales pasados disponibles/i.test(box.textContent||'');
   if(empty){box.innerHTML=html;box.dataset.fixed='1'}
   if(title)title.style.display='block';
-  if(status){status.textContent=status.textContent.replace(/\s*·\s*alertas calculadas.*$/i,'');if(status.textContent==='Consultando alertas…')status.textContent='Histórico oficial disponible · SENAMHI'}
+  if(status)status.textContent=status.textContent.replace(/\s*·\s*alertas calculadas.*$/i,'');
 }
 function normalizeSeverity(){
-  const f=document.getElementById('app');
-  let d;try{d=f.contentDocument;if(!d)return}catch(e){return}
+  const d=getDoc();if(!d)return;
   d.querySelectorAll('.alert-card').forEach(card=>{
-    const cls=card.className||'';
-    const first=card.querySelector('div');
-    if(!first)return;
-    const existing=first.querySelector('.badge:not(.severity-badge)');
-    const source=((existing&&existing.textContent)||'').trim().toUpperCase();
+    const cls=card.className||'',first=card.querySelector('div');if(!first)return;
+    const existing=first.querySelector('.badge:not(.severity-badge)'),source=((existing&&existing.textContent)||'').trim().toUpperCase();
     let level=null,badgeClass=null;
     if(source.includes('ROJO')||/\bcritical\b/.test(cls)){level='EXTREMA';badgeClass='danger'}
     else if(source.includes('NARANJA')||/\bhigh\b/.test(cls)){level='FUERTE';badgeClass='warn'}
@@ -54,41 +48,40 @@ function normalizeSeverity(){
     else if(source.includes('VERDE')||/\blow\b/.test(cls)){level='BAJA';badgeClass='ok'}
     else return;
     first.querySelectorAll('.badge').forEach(b=>b.remove());
-    const badge=d.createElement('span');
-    badge.className='badge severity-badge '+badgeClass;
-    badge.textContent=level;
-    first.insertBefore(badge,first.firstChild);
+    const badge=d.createElement('span');badge.className='badge severity-badge '+badgeClass;badge.textContent=level;first.insertBefore(badge,first.firstChild);
     if(/\bhigh\b/.test(cls)||/\bmedium\b/.test(cls)){card.classList.remove('high');card.classList.add('medium')}
   });
 }
 function moveCalculatedAlertsToCurrent(){
-  const f=document.getElementById('app');
-  let d;try{d=f.contentDocument;if(!d)return}catch(e){return}
-  const source=d.getElementById('systemAlerts');
-  const target=d.getElementById('officialAlerts');
-  if(!source||!target)return;
-  const cards=[...source.querySelectorAll('.alert-card')];
-  if(!cards.length)return;
-  const marker='calculated-current-marker';
-  if(!target.querySelector('.'+marker)){
-    const label=d.createElement('div');
-    label.className='label '+marker;
-    label.style.marginTop='12px';
-    label.textContent='⚠️ Riesgo calculado por Climate Alert';
-    target.appendChild(label);
-  }
-  const markerEl=target.querySelector('.'+marker);
-  cards.forEach(card=>{
-    const key=(card.textContent||'').trim();
-    if(![...target.querySelectorAll('.alert-card')].some(x=>(x.textContent||'').trim()===key)){
-      target.appendChild(card);
-    }
-  });
-  source.innerHTML='';
+  const d=getDoc();if(!d)return;const source=d.getElementById('systemAlerts'),target=d.getElementById('officialAlerts');if(!source||!target)return;
+  const cards=[...source.querySelectorAll('.alert-card')];if(!cards.length)return;const marker='calculated-current-marker';
+  if(!target.querySelector('.'+marker)){const label=d.createElement('div');label.className='label '+marker;label.style.marginTop='12px';label.textContent='⚠️ Riesgo calculado por Climate Alert';target.appendChild(label)}
+  cards.forEach(card=>{const key=(card.textContent||'').trim();if(![...target.querySelectorAll('.alert-card')].some(x=>(x.textContent||'').trim()===key))target.appendChild(card)});source.innerHTML='';
 }
-function fix(){fixHistory();normalizeSeverity();moveCalculatedAlertsToCurrent()}
+
+// Filtro visual de última línea: elimina cualquier noticia que no tenga
+// un fenómeno climático concreto Y una referencia clara a Perú.
+// "alerta" por sí sola NO es un fenómeno climático.
+function fixNews(){
+  const d=getDoc();if(!d)return;
+  try{localStorage.removeItem('climate_alert_news_climate_pe_v8')}catch(e){}
+  const box=d.getElementById('news');if(!box)return;
+  const items=[...box.querySelectorAll('.news-item')];
+  const climate=/(lluvia|lluvias|precipitaci[oó]n|inundaci[oó]n|inundaciones|desborde|huaico|huayco|tormenta|crecida|caudal|quebrada|deslizamiento|r[ií]o|senamhi|friaje|helada|granizo|nevadas?|cicl[oó]n|fen[oó]meno el ni[nñ]o|el ni[nñ]o costero|temperatura extrema|viento fuerte|vientos fuertes|oleaje)/i;
+  const peru=/(per[uú]|lima|callao|piura|tumbes|lambayeque|la libertad|trujillo|chiclayo|ancash|[aá]ncash|hu[aá]nuco|pasco|jun[ií]n|ica|arequipa|moquegua|tacna|cusco|puno|ayacucho|apur[ií]mac|huancavelica|amazonas|cajamarca|san mart[ií]n|ucayali|madre de dios|loreto|senamhi|indeci|rpp|el comercio|la rep[uú]blica|andina|gesti[oó]n|per[uú]21)/i;
+  const generic=/(pol[ií]tica|elecciones|congreso|partido pol[ií]tico|feij[oó]o|moedas|seguridad|habitaci[oó]n|deportes|entretenimiento|hor[oó]scopo|rusia|cient[ií]fica por un accidente|bater[ií]as en un laboratorio)/i;
+  let kept=0;
+  items.forEach(item=>{
+    const text=(item.textContent||'').toLowerCase();
+    const ok=climate.test(text)&&peru.test(text)&&!generic.test(text);
+    if(!ok)item.remove();else kept++;
+  });
+  const count=d.getElementById('newsCount');if(count)count.textContent=String(kept);
+  if(!kept)box.innerHTML='<div class="empty">No se encontraron noticias climáticas relevantes de Perú.</div>';
+}
+function fix(){fixHistory();normalizeSeverity();moveCalculatedAlertsToCurrent();fixNews()}
 const f=document.getElementById('app');
-f.addEventListener('load',()=>{fix();setInterval(fix,1500)});
+f.addEventListener('load',()=>{fix();setInterval(fix,1000)});
 </script>
 </body>
 </html>
