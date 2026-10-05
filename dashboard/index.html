@@ -35,7 +35,10 @@ function fixHistory(){
   const html=HIST.map(x=>{const orange=x[4]==='NARANJA';return '<div class="alert-card official '+(orange?'high':'medium')+'"><div><span class="badge '+(orange?'danger':'warn')+'">HISTÓRICO</span> <span class="alert-title">'+x[1]+'</span></div><div class="alert-meta">SENAMHI · N.º '+x[0]+' · Inicio: '+x[2]+' · Fin: '+x[3]+' · Aviso pasado</div><a class="alert-link" href="https://web2.senamhi.gob.pe/?p=avisos" target="_blank" rel="noopener">Ver aviso oficial</a></div>'}).join('');
   if(box && (!box.children.length || box.dataset.fixed!=='1')){box.innerHTML=html;box.dataset.fixed='1'}
   if(title)title.style.display='block';
-  if(status && status.textContent==='Consultando alertas…')status.textContent='Histórico oficial disponible · SENAMHI';
+  if(status){
+    status.textContent=status.textContent.replace(/\s*·\s*alertas calculadas.*$/i,'');
+    if(status.textContent==='Consultando alertas…')status.textContent='Histórico oficial disponible · SENAMHI';
+  }
 }
 const f=document.getElementById('app');
 f.addEventListener('load',()=>{fixHistory();setInterval(fixHistory,1500)});
