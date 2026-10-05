@@ -321,8 +321,8 @@ footer{color:var(--muted);font-size:11px;padding:20px 3px 12px;text-align:center
 </section>
 
 <section class="card section-card">
-  <div class="card-title"><span>📰</span><div><h2>Noticias recientes · Perú</h2><div class="card-kicker">Noticias recientes de todo el Perú</div></div></div>
-  <div class="label" style="margin-bottom:10px">Noticias nacionales recientes · todo el Perú</div>
+  <div class="card-title"><span>📰</span><div><h2>Noticias recientes · Perú</h2><div class="card-kicker">Noticias recientes sobre alertas climáticas y emergencias en Perú</div></div></div>
+  <div class="label" style="margin-bottom:10px">Alertas climáticas · lluvias · inundaciones · desbordes · huaicos · SENAMHI</div>
   <div id="newsStatus" class="label" style="margin-top:10px">🟡 Buscando noticias recientes…</div>
   <div id="news" class="news"><div class="label">Cargando noticias…</div></div>
 </section>
@@ -623,7 +623,7 @@ async function loadDirectAPIs(){
 }
 
 async function loadNewsLive(){
-  const newsQuery=encodeURIComponent('Perú');
+  const newsQuery=encodeURIComponent('Perú alerta climática lluvias inundaciones desbordes huaicos SENAMHI');
   try{
     const r=await q('https://climate-alert-platform-api.onrender.com/news?q='+newsQuery,10000);
     const articles=Array.isArray(r.articles)?r.articles:[];
