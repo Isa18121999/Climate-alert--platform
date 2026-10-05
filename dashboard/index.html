@@ -365,9 +365,10 @@ function isClimateAlertNews(a){
   // ubicaciones peruanas. Así no desaparecen resultados válidos.
   const peruLocation=/\bper[uú]\b|lima|callao|piura|tumbes|lambayeque|la libertad|ancash|[aá]ncash|ica|arequipa|moquegua|tacna|cusco|puno|jun[ií]n|hu[aá]nuco|pasco|ayacucho|huancavelica|apur[ií]mac|amazonas|san mart[ií]n|ucayali|madre de dios|cajamarca|hu[aá]nuco|apur[ií]mac|nazca|chiclayo|trujillo|chimbote|talara|sullana|sechura|ilo/.test(t);
   const peruSource=/(rpp|la rep[uú]blica|el comercio|andina|gesti[oó]n|per[uú]21|exitosa|am[eé]rica tv|canal n|latina|atv|tvper[uú]|tv per[uú]|correoper[uú]|diario correo|trome|ojo|expreso|senamhi|gob\.pe|infobae per[uú])/.test(source+' '+t);
-  const climate=/alerta|clim[aá]tica|lluvia|lluvias|precipitaci[oó]n|inundaci[oó]n|inundaciones|desborde|huaico|huayco|tormenta|crecida|caudal|quebrada|deslizamiento|r[ií]o|senamhi|fen[oó]meno el ni[nñ]o|cicl[oó]n|evento meteorol[oó]gico/.test(t);
+  const fromPeruBackend=a.country==='PE' || a.country==='PERU' || a.region==='Perú';
+  const climate=/alerta|clim[aá]tica|lluvia|lluvias|precipitaci[oó]n|inundaci[oó]n|inundaciones|desborde|huaico|huayco|tormenta|crecida|caudal|quebrada|deslizamiento|r[ií]o|senamhi|fen[oó]meno el ni[nñ]o|cicl[oó]n|evento meteorol[oó]gico|meteorol[oó]gico|pron[oó]stico/.test(t);
 
-  return (peruLocation || peruSource) && climate;
+  return (fromPeruBackend || peruLocation || peruSource) && climate;
 }
 function classifyNews(a){
   const t=((a.title||'')+' '+(a.description||'')).toLowerCase();
