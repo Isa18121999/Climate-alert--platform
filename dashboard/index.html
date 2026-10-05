@@ -532,140 +532,116 @@ function scheduleCoordinateRefresh(){
 }
 
 async function loadDirectAPIs(){
-  const latValue=$('lat').value.trim(), lonValue=$('lon').value.trim();
+  const latValue=$('lat')?.value?.trim()||'-5.1945';
+  const lonValue=$('lon')?.value?.trim()||'-80.6328';
   const latNumber=Number(latValue), lonNumber=Number(lonValue);
-  if(!Number.isFinite(latNumber)||!Number.isFinite(lonNumber)||latNumber < -90||latNumber > 90||lonNumber < -180||lonNumber > 180){
-    throw new Error('Ingresa coordenadas válidas: latitud entre -90 y 90 y longitud entre -180 y 180.');
+
+  if(!Number.isFinite(latNumber)||!Number.isFinite(lonNumber)||
+     latNumber < -90||latNumber > 90||lonNumber < -180||lonNumber > 180){
+    throw new Error('Coordenadas inválidas');
   }
+
+  updateLocationName(latValue,lonValue);
 
   const lat=encodeURIComponent(latValue), lon=encodeURIComponent(lonValue);
-  updateLocationName(latValue, lonValue);
-
-  const base=api();
-  const weatherDirect='https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,relative_humidity_2m,precipitation,rain,wind_speed_10m&forecast_days=1&timezone=UTC';
-  const floodDirect='https://flood-api.open-meteo.com/v1/flood?latitude='+lat+'&longitude='+lon+'&daily=river_discharge,river_discharge_max&forecast_days=7&timezone=UTC';
-  const newsQuery=encodeURIComponent('Perú');
-
-  let w=null, f=null, n=null;
   const problems=[];
 
+  // Weather: fuente pública directa primero.
+  let w=null;
   try{
-    w=await q('https://climate-alert-platform-api.onrender.com/weather?lat='+lat+'&lon='+lon,8000);
+    w=await q(
+      'https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+
+      '&current=temperature_2m,relative_humidity_2m,precipitation,rain,wind_speed_10m'+
+      '&forecast_days=1&timezone=auto',
+      8000
+    );
   }catch(e){
-    problems.push('Weather Render: '+e.message);
+    problems.push('clima');
     try{
-      w=await q(weatherDirect,8000);
-    }catch(e2){
-      problems.push('Weather directo: '+e2.message);
-      if(base){
-        try{ w=await q(base+'/weather?lat='+lat+'&lon='+lon,8000); }
-        catch(e3){ problems.push('Weather AWS: '+e3.message); }
-      }
+      w=await q('https://climate-alert-platform-api.onrender.com/weather?lat='+lat+'&lon='+lon,8000);
+    }catch(e2){ problems.push('respaldo clima'); }
+  }
+
+  let f=null;
+  try{
+    f=await q(
+      'https://flood-api.open-meteo.com/v1/flood?latitude='+lat+'&longitude='+lon+
+      '&daily=river_discharge,river_discharge_max&forecast_days=7&timezone=auto',
+      8000
+    );
+  }catch(e){
+    problems.push('caudal');
+    try{
+      f=await q('https://climate-alert-platform-api.onrender.com/flood?lat='+lat+'&lon='+lon,8000);
+    }catch(e2){ problems.push('respaldo caudal'); }
+  }
+
+  const current=(w&&w.current)||{};
+  const daily=(f&&f.daily)||{};
+  const discharge=daily.river_discharge||[];
+  const maxs=daily.river_discharge_max||[];
+
+  $('temp').textContent=current.temperature_2m!=null?Number(current.temperature_2m).toFixed(1)+' °C':'—';
+  $('rain').textContent=current.rain!=null?Number(current.rain).toFixed(1)+' mm':'—';
+  $('precip').textContent=current.precipitation!=null?Number(current.precipitation).toFixed(1)+' mm':'—';
+  $('humidity').textContent=current.relative_humidity_2m!=null?Number(current.relative_humidity_2m).toFixed(0)+' %':'—';
+  $('wind').textContent=current.wind_speed_10m!=null?Number(current.wind_speed_10m).toFixed(1)+' km/h':'—';
+  $('river').textContent=discharge.length?Number(discharge[0]).toFixed(2)+' m³/s':'—';
+  $('riverMax').textContent=maxs.length?Math.max(...maxs).toFixed(2)+' m³/s':'—';
+
+  const rv=localRisk(Number(current.rain||0),Number(discharge[0]||0));
+  $('risk').innerHTML=riskBadge(rv.level);
+  $('riskReason').textContent=rv.reason;
+
+  if(discharge.length){
+    saveCurrentMeasurement(latNumber,lonNumber,Number(current.rain||0),Number(discharge[0]||0));
+  }
+
+  // Noticias: actualizar en segundo plano y no bloquear clima/riesgo.
+  loadNewsLive();
+
+  $('status').textContent=problems.length
+    ? 'Datos disponibles con respaldo automático.'
+    : 'Datos actualizados correctamente.';
+}
+
+async function loadNewsLive(){
+  const newsQuery=encodeURIComponent('Perú');
+  try{
+    const r=await q('https://climate-alert-platform-api.onrender.com/news?q='+newsQuery,10000);
+    const articles=Array.isArray(r.articles)?r.articles:[];
+    if(articles.length){
+      saveNewsCache(articles);
+      renderNewsArticles(articles);
+      if($('newsStatus')) $('newsStatus').textContent='🟢 Noticias en vivo';
+      return;
     }
+  }catch(e){
+    console.warn('Noticias Render:',e);
   }
 
   try{
-    f=await q('https://climate-alert-platform-api.onrender.com/flood?lat='+lat+'&lon='+lon,8000);
+    const aws=await q(api()+'/news?q='+newsQuery,10000);
+    const articles=Array.isArray(aws.articles)?aws.articles:[];
+    if(articles.length){
+      saveNewsCache(articles);
+      renderNewsArticles(articles);
+      if($('newsStatus')) $('newsStatus').textContent='🟢 Noticias en vivo';
+      return;
+    }
   }catch(e){
-    problems.push('Flood Render: '+e.message);
-    try{
-      f=await q(floodDirect,8000);
-    }catch(e2){
-      problems.push('Flood directo: '+e2.message);
-      if(base){
-        try{ f=await q(base+'/flood?lat='+lat+'&lon='+lon,8000); }
-        catch(e3){ problems.push('Flood AWS: '+e3.message); }
-      }
-    }
-  }
-
-  if(w){
-    const current=w.current||{};
-    $('temp').textContent=current.temperature_2m!=null?current.temperature_2m+' °C':'—';
-    $('rain').textContent=current.rain!=null?current.rain+' mm':'—';
-    $('precip').textContent=current.precipitation!=null?current.precipitation+' mm':'—';
-    $('humidity').textContent=current.relative_humidity_2m!=null?current.relative_humidity_2m+' %':'—';
-    $('wind').textContent=current.wind_speed_10m!=null?current.wind_speed_10m+' km/h':'—';
-  }
-
-  let discharge=[], maxs=[];
-  if(f){
-    const d=f.daily||{};
-    discharge=d.river_discharge||[];
-    maxs=d.river_discharge_max||[];
-    $('river').textContent=discharge.length?discharge[0]+' m³/s':'—';
-    $('riverMax').textContent=maxs.length?Math.max(...maxs)+' m³/s':'—';
-  }
-
-  const shouldRefreshNews=!lastNewsArticles.length || (Date.now()-lastNewsAt>NEWS_CACHE_MS);
-  if(shouldRefreshNews){
-    try{
-      const renderNews=await q('https://climate-alert-platform-api.onrender.com/news?q='+newsQuery,12000);
-      const renderArticles=Array.isArray(renderNews.articles)?renderNews.articles:[];
-      if(renderArticles.length) n=renderNews;
-      else throw new Error('Render News devolvió 0 artículos');
-    }catch(e){
-      console.warn('Render News no disponible:',e);
-      if(base){
-        try{
-          const awsNews=await q(base+'/news?q='+newsQuery,9000);
-          const awsArticles=Array.isArray(awsNews.articles)?awsNews.articles:[];
-          if(awsArticles.length) n=awsNews;
-          else throw new Error('AWS News devolvió 0 artículos');
-        }catch(e2){
-          problems.push('Noticias AWS: '+e2.message);
-        }
-      }
-      if(!n){
-        try{
-          const gdeltUrl='https://api.gdeltproject.org/api/v2/doc/doc?query='+newsQuery+'&mode=ArtList&format=json&maxrecords=20&sort=HybridRel&timespan=24h&sourcelang=Spanish';
-          const gdeltNews=await q(gdeltUrl,12000);
-          const gdeltArticles=Array.isArray(gdeltNews.articles)?gdeltNews.articles:[];
-          if(gdeltArticles.length) n=gdeltNews;
-          else throw new Error('GDELT devolvió 0 artículos');
-        }catch(e3){
-          problems.push('Noticias GDELT: '+e3.message);
-        }
-      }
-    }
-    if(n && Array.isArray(n.articles) && n.articles.length){
-      saveNewsCache(n.articles);
-    }
-  }
-
-  if(w){
-    const current=w.current||{};
-    const rv=localRisk(Number(current.rain||0),Number(discharge[0]||0));
-    $('risk').innerHTML=riskBadge(rv.level);
-    $('riskReason').textContent=rv.reason;
-    if(discharge.length){
-      saveCurrentMeasurement(
-        latNumber,
-        lonNumber,
-        Number(current.rain||0),
-        Number(discharge[0]||0)
-      );
-    }
+    console.warn('Noticias AWS:',e);
   }
 
   if(lastNewsArticles.length){
     renderNewsArticles(lastNewsArticles);
-  }else if(n && Array.isArray(n.articles) && n.articles.length){
-    saveNewsCache(n.articles);
-    renderNewsArticles(n.articles);
   }else{
-    renderNewsArticles([]);
+    $('newsCount').textContent='0';
+    $('news').innerHTML='<div class="empty">No se pudieron cargar las noticias en este momento.</div>';
+    if($('newsStatus')) $('newsStatus').textContent='🟡 Reintentando noticias…';
   }
-
-
-  if(!w && !f){
-    throw new Error('No fue posible consultar Weather ni Flood. '+problems.join(' | '));
-  }
-
-  $('status').textContent=problems.length
-    ? 'Datos cargados con respaldo automático: '+problems.join(' | ')
-    : 'APIs externas consultadas correctamente.';
 }
+
 async function loadAWS(){
   if(!api()){
     $('backend').textContent='Modo web directo activo: Weather, Flood y News se consultan mediante APIs públicas. Conecta el backend para ver alertas y mediciones.';
@@ -736,25 +712,28 @@ async function loadAWS(){
 
 async function refreshAll(){
   $('status').textContent='Consultando datos…';
-
-  const directPromise=loadDirectAPIs();
-  const awsPromise=loadAWS();
-
-  const [directResult]=await Promise.allSettled([directPromise,awsPromise]);
-
-  if(directResult.status==='fulfilled'){
+  loadAWS().catch(e=>console.warn('AWS dashboard:',e));
+  try{
+    await loadDirectAPIs();
     $('updated').textContent=new Date().toLocaleString('es-PE');
-    if($('status').textContent==='Consultando datos…'){
-      $('status').textContent='Datos actualizados correctamente.';
-    }
-  }else{
-    $('status').textContent='Algunos datos externos no respondieron; se muestran los disponibles.';
+  }catch(e){
+    console.error('Dashboard:',e);
+    $('status').textContent='No se pudieron cargar algunos datos.';
   }
 }
+
 $('lat').addEventListener('change', scheduleCoordinateRefresh);
 $('lon').addEventListener('change', scheduleCoordinateRefresh);
 $('lat').addEventListener('blur', scheduleCoordinateRefresh);
 $('lon').addEventListener('blur', scheduleCoordinateRefresh);
+window.addEventListener('error',function(e){
+  console.error(e.error||e.message);
+  const el=$('status');
+  if(el) el.textContent='Error de carga: '+(e.message||'Error de JavaScript');
+});
+window.addEventListener('unhandledrejection',function(e){
+  console.error(e.reason);
+});
 readNewsCache();
 refreshAll();
 setTimeout(()=>useCurrentLocation(false),700);
