@@ -27,8 +27,8 @@ def get_json(path: str) -> dict:
 
 def already_sent(alert_key: str) -> bool:
     try:
-        table.get_item(Key={"alert_key": alert_key}, ConsistentRead=True)
-        return "alert_key" in table.get_item(Key={"alert_key": alert_key}, ConsistentRead=True)
+        response = table.get_item(Key={"alert_key": alert_key}, ConsistentRead=True)
+        return "Item" in response
     except ClientError as exc:
         print(f"DynamoDB read error: {exc}")
         raise
@@ -112,8 +112,8 @@ def main(event, context):
         risk_data = monitor.get("risk") or {}
         risk_level = str(risk_data.get("level") or "").upper()
 
-        # Riesgo calculado: solo FUERTE/EXTREMO (ALTO/CRITICO internamente)
-        # genera una notificación externa. BAJO/MEDIO solo permanecen en dashboard.
+        # Riesgo calculado: solo FUERTE/EXTREMA genera notificación externa.
+        # BAJA/MODERADA permanece visible en el dashboard sin enviar correo.
         if risk_level in {"ALTO", "CRITICO"}:
             risk_alert = {
                 "id": f"aws-risk-{datetime.now(timezone.utc).strftime('%Y%m%d%H')}",
