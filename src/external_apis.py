@@ -67,6 +67,77 @@ def flood(lat: float, lon: float) -> dict:
     }
 
 
+def _peruvian_climate_rss(query: str) -> dict:
+    feeds = [
+        ("RPP", "https://rpp.pe/rss-titulares.xml"),
+        ("El Comercio", "https://elcomercio.pe/arc/outboundfeeds/rss/category/peru/?outputType=xml"),
+        ("El Comercio Lima", "https://elcomercio.pe/arc/outboundfeeds/rss/category/lima/?outputType=xml"),
+    ]
+    climate = (
+        "alerta", "lluvia", "lluvias", "precipit", "inund", "desborde",
+        "huaico", "huayco", "tormenta", "crecida", "caudal", "quebrada",
+        "deslizamiento", "río", "rio", "senamhi", "fenómeno el niño",
+        "fenomeno el nino", "ciclón", "ciclon", "meteorológ", "meteorolog",
+        "temperatura extrema",
+    )
+    excluded = ("portada", "horóscopo", "horoscopo", "deportes", "entretenimiento")
+    articles = []
+    seen = set()
+
+    for source_label, feed_url in feeds:
+        try:
+            request = Request(
+                feed_url,
+                headers={"User-Agent": "ClimateAlertPlatform/1.0 (+academic-project)"},
+            )
+            with urlopen(request, timeout=10) as response:
+                root = ET.fromstring(response.read())
+
+            for item in root.findall(".//item"):
+                title = (item.findtext("title") or "").strip()
+                link = (item.findtext("link") or "").strip()
+                pub_date = item.findtext("pubDate")
+                description = item.findtext("description") or ""
+                text = (title + " " + description).lower()
+
+                if not title or not link:
+                    continue
+                if any(x in text for x in excluded):
+                    continue
+                if not any(x in text for x in climate):
+                    continue
+
+                key = link or title
+                if key in seen:
+                    continue
+                seen.add(key)
+                articles.append({
+                    "title": title,
+                    "url": link,
+                    "domain": source_label,
+                    "language": "es",
+                    "seendate": pub_date,
+                    "socialimage": None,
+                    "country": "PE",
+                    "region": "Perú",
+                })
+                if len(articles) >= 20:
+                    break
+            if len(articles) >= 20:
+                break
+        except Exception as exc:
+            print(f"RSS {source_label}: {exc}")
+
+    return {
+        "source": "RSS medios peruanos",
+        "source_url": "https://rpp.pe/rss-titulares.xml",
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+        "query": query,
+        "articles": articles,
+        "source_update_note": "Noticias climáticas de medios peruanos mediante RSS.",
+    }
+
+
 def _gdelt_live_rss(query: str) -> dict:
     # Feed de noticias de GDELT actualizado continuamente.
     url = os.getenv("GDELT_GAL_RSS", "https://data.gdeltproject.org/gdeltv3/gal/feed.rss")
@@ -167,7 +238,16 @@ def _google_news_rss(query: str) -> dict:
 def news(query: str = "Perú alerta climática lluvias inundaciones desbordes huaicos SENAMHI") -> dict:
     errors = []
 
-    # Priorizar el feed en vivo: evita el 429 frecuente de GDELT DOC.
+    # Priorizar RSS de medios peruanos para no depender de GDELT/Google.
+    try:
+        local = _peruvian_climate_rss(query)
+        if local.get("articles"):
+            return local
+        errors.append("RSS medios peruanos sin resultados")
+    except Exception as exc:
+        errors.append(f"RSS medios peruanos: {exc}")
+
+    # Segundo intento: feed en vivo de GDELT.
     try:
         live = _gdelt_live_rss(query)
         if live.get("articles"):
