@@ -276,7 +276,7 @@ footer{color:var(--muted);font-size:11px;padding:20px 3px 12px;text-align:center
   </div>
   <div class="metric">
     <div class="metric-top"><div><div class="label">Noticias recientes</div><div id="newsCount" class="value">—</div></div><div class="metric-icon">📰</div></div>
-    <div class="source">GDELT DOC 2.0 + RSS fallback</div>
+    <div class="source">SENAMHI + medios peruanos</div>
   </div>
 </section>
 
@@ -469,11 +469,11 @@ async function saveCurrentMeasurement(latNumber,lonNumber,rainValue,riverValue){
 function renderNewsArticles(articles){
   const list=(Array.isArray(articles)?articles:[]).filter(shouldShowNews);
   $('newsCount').textContent=list.length;
-  if(list.length && $('newsStatus')) $('newsStatus').textContent='🟢 Noticias en vivo';
+  if(list.length && $('newsStatus')) $('newsStatus').textContent='🟢 Noticias recientes';
   $('news').innerHTML=list.length
     ? list.map(a=>{
         const level=classifyNews(a);
-        return '<div class="news-item"><div class="news-body"><div><span class="news-level '+level.cls+'">'+level.label+'</span> <a href="'+(a.url||'#')+'" target="_blank" rel="noopener">'+(a.title||'Sin título')+'</a></div><div class="news-source">'+(a.domain||a.source?.title||'fuente')+' · '+(a.seendate||a.publishedAt||'')+' · clasificación automática</div></div><span style="font-size:14px">↗</span></div>';
+        return '<div class="news-item"><div class="news-body"><div><span class="news-level '+level.cls+'">'+level.label+'</span> <a href="'+(a.url||'#')+'" target="_blank" rel="noopener">'+(a.title||'Sin título')+'</a></div><div class="news-source">'+(a.domain||a.source?.title||'fuente')+' · '+(a.seendate||a.publishedAt||'')+' · Noticias recientes</div></div><span style="font-size:14px">↗</span></div>';
       }).join('')
     : '<div class="empty">No se encontraron noticias recientes de riesgo para Perú.</div>';
 }
@@ -655,7 +655,7 @@ async function loadNewsLive(){
     if(articles.length){
       saveNewsCache(articles);
       renderNewsArticles(articles);
-      if($('newsStatus')) $('newsStatus').textContent='🟢 Noticias en vivo';
+      if($('newsStatus')) $('newsStatus').textContent='🟢 Noticias recientes';
       return;
     }
   }catch(e){
@@ -669,7 +669,7 @@ async function loadNewsLive(){
     if(articles.length){
       saveNewsCache(articles);
       renderNewsArticles(articles);
-      if($('newsStatus')) $('newsStatus').textContent='🟢 Noticias en vivo';
+      if($('newsStatus')) $('newsStatus').textContent='🟢 Noticias recientes';
       return;
     }
   }catch(e){
