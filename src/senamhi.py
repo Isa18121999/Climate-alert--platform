@@ -11,9 +11,8 @@ SENAMHI_ALERTS_URL = "https://web2.senamhi.gob.pe/?p=avisos"
 SENAMHI_SHORT_TERM_RAIN_URL = "https://www.senamhi.gob.pe/servicios/main.php?dp=lima&p=aviso-24H"
 MONTHS_ES = {"ene":1,"enero":1,"feb":2,"febrero":2,"mar":3,"marzo":3,"abr":4,"abril":4,"may":5,"mayo":5,"jun":6,"junio":6,"jul":7,"julio":7,"ago":8,"agosto":8,"sep":9,"sept":9,"septiembre":9,"oct":10,"octubre":10,"nov":11,"noviembre":11,"dic":12,"diciembre":12}
 
-# Respaldo histórico oficial: se usa únicamente cuando SENAMHI no entrega
-# registros históricos en la respuesta HTML. Los registros provienen del
-# listado oficial de avisos meteorológicos de SENAMHI.
+# Respaldo histórico oficial: se mezcla con los datos obtenidos de SENAMHI
+# para que el dashboard siempre pueda mostrar avisos pasados.
 HISTORICAL_OFFICIAL = [
     ("269", "INCREMENTO DE VIENTO EN LA SIERRA NORTE", "2026-07-07", "2026-07-09", "NARANJA"),
     ("268", "INCREMENTO DE TEMPERATURA DIURNA EN LA COSTA Y SIERRA (EXTENSIÓN DEL AVISO 266)", "2026-07-07", "2026-07-09", "NARANJA"),
@@ -147,12 +146,12 @@ def senamhi_alerts() -> dict:
         except Exception as exc: errors.append(f"{label}: {exc}")
 
     now_dt = datetime.now(timezone.utc)
-    # El portal de SENAMHI puede entregar la tabla histórica mediante JS y
-    # dejar solo los registros vigentes en el HTML que ve requests. Si no
-    # tenemos ningún aviso pasado, incorporamos un respaldo histórico oficial.
-    parsed_past = [a for a in alerts if _status(a, now_dt) == "PASADO"]
-    if not parsed_past:
-        alerts.extend(_historical_fallback())
+    # El portal puede entregar la tabla histórica mediante JS. Mezclamos
+    # siempre los avisos históricos oficiales conocidos para que la sección
+    # "Avisos pasados" nunca quede vacía por una respuesta HTML incompleta.
+    historical = _historical_fallback()
+    known_ids = {a.get("id") for a in alerts}
+    alerts.extend(a for a in historical if a.get("id") not in known_ids)
 
     dedup = {}
     for alert in alerts:
@@ -161,4 +160,14 @@ def senamhi_alerts() -> dict:
         dedup[alert["id"]] = alert
 
     ordered = sorted(dedup.values(), key=lambda x: _parse_datetime(str(x.get("end_at", ""))) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
-    return {"source":"SENAMHI","source_url":SENAMHI_ALERTS_URL,"fetched_at":now_dt.isoformat(),"alerts":ordered[:50],"warnings":errors}
+    past = [a for a in ordered if a.get("status") == "PASADO"]
+    current = [a for a in ordered if a.get("status") == "ACTUAL"]
+    return {
+        "source":"SENAMHI",
+        "source_url":SENAMHI_ALERTS_URL,
+        "fetched_at":now_dt.isoformat(),
+        "alerts":ordered[:50],
+        "past_alerts":past[:50],
+        "current_alerts":current[:50],
+        "warnings":errors,
+    }
