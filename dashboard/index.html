@@ -12,7 +12,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#eef5f8}ifr
 </style>
 </head>
 <body>
-<iframe id="app" src="index-original.html?v=20261005-current-risk2" title="Climate Alert Platform"></iframe>
+<iframe id="app" src="index-original.html?v=20261005-current-risk3" title="Climate Alert Platform"></iframe>
 <script>
 const HIST=[
 ['269','INCREMENTO DE VIENTO EN LA SIERRA NORTE','2026-07-07','2026-07-09','NARANJA'],
@@ -61,7 +61,33 @@ function normalizeSeverity(){
     if(/\bhigh\b/.test(cls)||/\bmedium\b/.test(cls)){card.classList.remove('high');card.classList.add('medium')}
   });
 }
-function moveCalculatedAlertsToCurrent(){
+function currentTarget(){
+  const d=document.getElementById('app').contentDocument;
+  return d&&d.getElementById('officialAlerts');
+}
+function addCurrentCard(card,key){
+  const target=currentTarget();
+  if(!target||!card)return;
+  if(![...target.querySelectorAll('.alert-card')].some(x=>x.dataset.alertKey===key)){
+    card.dataset.alertKey=key;
+    target.appendChild(card);
+  }
+}
+function ensureCurrentMarker(){
+  const d=document.getElementById('app').contentDocument;
+  const target=currentTarget();
+  if(!d||!target)return null;
+  let marker=target.querySelector('.calculated-current-marker');
+  if(!marker){
+    marker=d.createElement('div');
+    marker.className='label calculated-current-marker';
+    marker.style.marginTop='12px';
+    marker.textContent='⚠️ Riesgo calculado por Climate Alert';
+    target.appendChild(marker);
+  }
+  return marker;
+}
+async function moveCalculatedAlertsToCurrent(){
   const f=document.getElementById('app');
   let d;try{d=f.contentDocument;if(!d)return}catch(e){return}
   const source=d.getElementById('systemAlerts');
@@ -69,26 +95,51 @@ function moveCalculatedAlertsToCurrent(){
   if(!source||!target)return;
   const cards=[...source.querySelectorAll('.alert-card')];
   if(!cards.length)return;
-  const marker='calculated-current-marker';
-  if(!target.querySelector('.'+marker)){
-    const label=d.createElement('div');
-    label.className='label '+marker;
-    label.style.marginTop='12px';
-    label.textContent='⚠️ Riesgo calculado por Climate Alert';
-    target.appendChild(label);
-  }
-  const markerEl=target.querySelector('.'+marker);
+  ensureCurrentMarker();
   cards.forEach(card=>{
-    const key=(card.textContent||'').trim();
-    if(![...target.querySelectorAll('.alert-card')].some(x=>(x.textContent||'').trim()===key)){
-      target.appendChild(card);
-    }
+    const key='generated-'+(card.textContent||'').trim();
+    addCurrentCard(card,key);
   });
   source.innerHTML='';
 }
-function fix(){fixHistory();normalizeSeverity();moveCalculatedAlertsToCurrent()}
+async function moveRecentCriticalMeasurementsToCurrent(){
+  const f=document.getElementById('app');
+  let d;try{d=f.contentDocument;if(!d)return}catch(e){return}
+  const apiInput=d.getElementById('api');
+  const base=(apiInput&&apiInput.value||'').replace(/\/$/,'');
+  if(!base)return;
+  try{
+    const r=await fetch(base+'/measurements',{cache:'no-store'});
+    if(!r.ok)return;
+    const data=await r.json();
+    const items=Array.isArray(data.items)?data.items:[];
+    const now=Date.now();
+    const recent=items.filter(x=>{
+      const level=String(x.risk_level||'').toUpperCase();
+      const ts=Date.parse(String(x.timestamp||'').replace(' ','T'));
+      return (level==='ALTO'||level==='CRITICO') && Number.isFinite(ts) && (now-ts)>=-60000 && (now-ts)<=15*60*1000;
+    }).slice(0,3);
+    if(!recent.length)return;
+    ensureCurrentMarker();
+    recent.forEach(x=>{
+      const d2=document.getElementById('app').contentDocument;
+      const level=String(x.risk_level||'').toUpperCase();
+      const extreme=level==='CRITICO';
+      const card=d2.createElement('div');
+      card.className='alert-card '+(extreme?'critical':'high');
+      const rain=Number(x.rain_mm_h);
+      const river=Number(x.river_level_m);
+      const rainText=Number.isFinite(rain)?rain+' mm/h':'—';
+      const riverText=Number.isFinite(river)?river:'—';
+      const when=new Date(String(x.timestamp||'').replace(' ','T')).toLocaleString('es-PE');
+      card.innerHTML='<div><span class="badge '+(extreme?'danger':'warn')+'">'+(extreme?'EXTREMA':'FUERTE')+'</span> <span class="alert-title">Riesgo calculado por Climate Alert</span></div><div class="alert-meta">Estación '+(x.station_id||'—')+' · Lluvia: '+rainText+' · Caudal / nivel: '+riverText+' · '+when+' · Medición reciente</div>';
+      addCurrentCard(card,'measurement-'+(x.id||x.timestamp||x.station_id));
+    });
+  }catch(e){console.warn('No se pudieron revisar mediciones recientes:',e)}
+}
+function fix(){fixHistory();normalizeSeverity();moveCalculatedAlertsToCurrent();moveRecentCriticalMeasurementsToCurrent()}
 const f=document.getElementById('app');
-f.addEventListener('load',()=>{fix();setInterval(fix,1500)});
+f.addEventListener('load',()=>{fix();setInterval(fix,5000)});
 </script>
 </body>
 </html>
