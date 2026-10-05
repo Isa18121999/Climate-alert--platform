@@ -354,10 +354,20 @@ function localRisk(rain,river){
 }
 
 function isClimateAlertNews(a){
-  const t=((a.title||'')+' '+(a.description||'')+' '+(a.domain||'')).toLowerCase();
-  const peru=/per[uú]|per[uú]\.|\bpe\b|lima|piura|tumbes|lambayeque|la libertad|ancash|[aá]ncash|ica|arequipa|moquegua|tacna|cusco|puno|jun[ií]n|hu[aá]nuco|pasco|ayacucho|huancavelica|apur[ií]mac|amazonas|san mart[ií]n|ucayali|madre de dios|cajamarca|callao|senamhi|el ni[nñ]o/.test(t);
+  const title=(a.title||'').toLowerCase();
+  const desc=(a.description||'').toLowerCase();
+  const source=(a.domain||'').toLowerCase();
+  const url=(a.url||'').toLowerCase();
+  const t=title+' '+desc+' '+source+' '+url;
+
+  // La consulta ya está limitada a Perú. Para no perder noticias locales
+  // cuyo titular no diga "Perú", aceptamos también medios peruanos y
+  // ubicaciones peruanas. Así no desaparecen resultados válidos.
+  const peruLocation=/\bper[uú]\b|lima|callao|piura|tumbes|lambayeque|la libertad|ancash|[aá]ncash|ica|arequipa|moquegua|tacna|cusco|puno|jun[ií]n|hu[aá]nuco|pasco|ayacucho|huancavelica|apur[ií]mac|amazonas|san mart[ií]n|ucayali|madre de dios|cajamarca|hu[aá]nuco|apur[ií]mac|nazca|chiclayo|trujillo|chimbote|talara|sullana|sechura|ilo/.test(t);
+  const peruSource=/(rpp|la rep[uú]blica|el comercio|andina|gesti[oó]n|per[uú]21|exitosa|am[eé]rica tv|canal n|latina|atv|tvper[uú]|tv per[uú]|correoper[uú]|diario correo|trome|ojo|expreso|senamhi|gob\.pe|infobae per[uú])/.test(source+' '+t);
   const climate=/alerta|clim[aá]tica|lluvia|lluvias|precipitaci[oó]n|inundaci[oó]n|inundaciones|desborde|huaico|huayco|tormenta|crecida|caudal|quebrada|deslizamiento|r[ií]o|senamhi|fen[oó]meno el ni[nñ]o|cicl[oó]n|evento meteorol[oó]gico/.test(t);
-  return peru && climate;
+
+  return (peruLocation || peruSource) && climate;
 }
 function classifyNews(a){
   const t=((a.title||'')+' '+(a.description||'')).toLowerCase();
@@ -373,7 +383,7 @@ function shouldShowNews(a){
   return isClimateAlertNews(a) && classifyNews(a).label!=='INFORMATIVA';
 }
 
-const NEWS_CACHE_KEY='climate_alert_news_climate_pe_v5';
+const NEWS_CACHE_KEY='climate_alert_news_climate_pe_v6';
 const NEWS_CACHE_MS=60*1000;
 let lastNewsArticles=[];
 let lastNewsAt=0;
