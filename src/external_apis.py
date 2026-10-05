@@ -12,12 +12,24 @@ OPEN_METEO_FORECAST = os.getenv("OPEN_METEO_FORECAST", "https://api.open-meteo.c
 OPEN_METEO_FLOOD = os.getenv("OPEN_METEO_FLOOD", "https://flood-api.open-meteo.com/v1/flood")
 
 PERU_CLIMATE_TERMS = (
-    "alerta", "lluvia", "lluvias", "precipit", "inund", "desborde", "huaico", "huayco",
+    "lluvia", "lluvias", "precipit", "inund", "desborde", "huaico", "huayco",
     "tormenta", "crecida", "caudal", "quebrada", "deslizamiento", "río", "rio", "senamhi",
     "fenómeno el niño", "fenomeno el nino", "el niño costero", "el nino costero", "ciclón", "ciclon",
     "meteorológ", "meteorolog", "temperatura extrema", "oleaje", "granizo", "helada", "friaje",
+    "viento fuerte", "vientos fuertes", "temperatura máxima", "temperatura minima", "temperatura mínima",
 )
-GENERIC_TERMS = ("horóscopo", "horoscopo", "deportes", "entretenimiento", "farándula", "farandula", "informativa")
+PERU_SIGNALS = (
+    "perú", "peru", "senamhi", "indeci", "lima", "callao", "piura", "tumbes", "chiclayo",
+    "lambayeque", "la libertad", "trujillo", "ancash", "áncash", "huánuco", "huanuco", "pasco",
+    "junín", "junin", "ica", "arequipa", "moquegua", "tacna", "cusco", "cuzco", "puno",
+    "ayacucho", "apurímac", "apurimac", "huancavelica", "amazonas", "cajamarca", "san martín",
+    "san martin", "ucayali", "madre de dios", "loreto",
+)
+GENERIC_TERMS = (
+    "horóscopo", "horoscopo", "deportes", "entretenimiento", "farándula", "farandula", "informativa",
+    "política", "politica", "elecciones", "congreso", "partido político", "partido politico",
+    "ideológica", "ideologica", "seguridad y habitación",
+)
 PERU_MEDIA = ("rpp.pe", "elcomercio.pe", "larepublica.pe", "andina.pe", "gestion.pe", "peru21.pe")
 
 
@@ -62,7 +74,13 @@ def _clean_text(value: str) -> str:
 
 def _is_climate_item(title: str, description: str = "", category: str = "") -> bool:
     text = f"{title} {description} {category}".lower()
-    return any(term in text for term in PERU_CLIMATE_TERMS) and not any(term in text for term in GENERIC_TERMS)
+    # A generic "alerta" is deliberately excluded. Require a concrete
+    # climate/emergency phenomenon AND a Peru-specific place/institution.
+    return (
+        any(term in text for term in PERU_CLIMATE_TERMS)
+        and any(term in text for term in PERU_SIGNALS)
+        and not any(term in text for term in GENERIC_TERMS)
+    )
 
 
 def _significance(title: str, description: str = "") -> str:
@@ -122,18 +140,18 @@ def _peruvian_climate_rss(query: str) -> dict:
         "source": "RSS medios peruanos", "source_url": "https://rpp.pe/rss-titulares.xml",
         "fetched_at": datetime.now(timezone.utc).isoformat(), "query": query,
         "articles": articles[:20],
-        "source_update_note": "Solo noticias climáticas de Perú. Se excluyen noticias internacionales, genéricas y de categoría Informativa.",
+        "source_update_note": "Solo noticias climáticas relevantes de Perú. Se exige fenómeno climático/emergencia y referencia a Perú, una región peruana o SENAMHI/INDECI. Se excluyen noticias políticas, internacionales, genéricas y de categoría Informativa.",
         "warnings": errors,
     }
 
 
 def news(query: str = "Perú alerta climática lluvias inundaciones desbordes huaicos SENAMHI El Niño Costero") -> dict:
-    """Return only Peru climate/emergency news from approved Peruvian RSS feeds."""
+    """Return only relevant Peru climate/emergency news from approved Peruvian RSS feeds."""
     result = _peruvian_climate_rss(query)
     if result.get("articles"):
         return result
     result["source_update_note"] = (
-        "No hay noticias climáticas peruanas disponibles en los RSS consultados en este momento. "
-        "No se muestran noticias internacionales, genéricas ni de categoría Informativa."
+        "No hay noticias climáticas relevantes de Perú disponibles en los RSS consultados en este momento. "
+        "No se muestran noticias internacionales, políticas, genéricas ni de categoría Informativa."
     )
     return result
