@@ -58,6 +58,12 @@ def _is_climate_article(title: str, description: str = "", category: str = "") -
 
 
 def peruvian_climate_rss_news() -> list[dict]:
+    """Fetch a small, fast set of verified Peru climate stories.
+
+    RPP is checked first because its public RSS is reliable and broad. We stop
+    once enough valid stories are collected so a slow secondary RSS feed cannot
+    make the Render request exceed the dashboard timeout.
+    """
     feeds = [
         ("RPP", "https://rpp.pe/rss-titulares.xml"),
         ("El Comercio", "https://elcomercio.pe/arc/outboundfeeds/rss/category/peru/?outputType=xml"),
@@ -68,7 +74,11 @@ def peruvian_climate_rss_news() -> list[dict]:
 
     for source_label, feed_url in feeds:
         try:
-            r = requests.get(feed_url, timeout=10, headers={"User-Agent": "ClimateAlertPlatform/1.0 (+academic-project)"})
+            r = requests.get(
+                feed_url,
+                timeout=(3.5, 4.5),
+                headers={"User-Agent": "ClimateAlertPlatform/1.0 (+academic-project)"},
+            )
             r.raise_for_status()
             root = ET.fromstring(r.content)
             for item in root.findall(".//item"):
@@ -101,7 +111,9 @@ def peruvian_climate_rss_news() -> list[dict]:
                     "region": "Perú",
                     "category": category or "Clima",
                 })
-                if len(articles) >= 20:
+                # Five valid stories are enough for the dashboard and keep the
+                # endpoint fast even when a secondary RSS provider is slow.
+                if len(articles) >= 5:
                     return articles
         except Exception as exc:
             print(f"RSS {source_label}: {exc}")
