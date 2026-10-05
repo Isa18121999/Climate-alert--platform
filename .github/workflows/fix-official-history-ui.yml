@@ -1,0 +1,73 @@
+name: Fix official history UI
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, 'Fix official history UI') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Patch dashboard
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('dashboard/index.html')
+          text = path.read_text(encoding='utf-8')
+
+          marker = "async function loadAWS(){"
+          if marker not in text:
+              raise SystemExit('No se encontró loadAWS')
+
+          fallback = r'''function renderHistoricalOfficialFallback(){
+  const items=[
+    {number:'269',title:'INCREMENTO DE VIENTO EN LA SIERRA NORTE',start_at:'2026-07-07',end_at:'2026-07-09',level:'NARANJA'},
+    {number:'268',title:'INCREMENTO DE TEMPERATURA DIURNA EN LA COSTA Y SIERRA (EXTENSIÓN DEL AVISO 266)',start_at:'2026-07-07',end_at:'2026-07-09',level:'NARANJA'},
+    {number:'267',title:'NEVADA EN LA SIERRA CENTRO Y SUR (EXTENSIÓN DEL AVISO 261)',start_at:'2026-07-04',end_at:'2026-07-04',level:'AMARILLO'},
+    {number:'266',title:'INCREMENTO DE TEMPERATURA DIURNA EN LA COSTA Y SIERRA',start_at:'2026-07-04',end_at:'2026-07-06',level:'NARANJA'},
+    {number:'265',title:'INCREMENTO DE VIENTO EN LA COSTA CENTRO Y SUR',start_at:'2026-07-05',end_at:'2026-07-06',level:'NARANJA'},
+    {number:'264',title:'DESCENSO DE TEMPERATURA DIURNA EN LA SELVA - QUINTO FRIAJE',start_at:'2026-07-03',end_at:'2026-07-04',level:'NARANJA'},
+    {number:'263',title:'INCREMENTO DE VIENTO EN LA COSTA CENTRO Y SUR',start_at:'2026-07-03',end_at:'2026-07-04',level:'NARANJA'},
+    {number:'262',title:'LLUVIA EN LA SELVA - QUINTO FRIAJE',start_at:'2026-07-02',end_at:'2026-07-03',level:'AMARILLO'},
+    {number:'261',title:'NEVADA EN LA SIERRA CENTRO Y SUR',start_at:'2026-07-02',end_at:'2026-07-03',level:'NARANJA'},
+    {number:'260',title:'INCREMENTO DE VIENTO EN LA SIERRA',start_at:'2026-07-01',end_at:'2026-07-03',level:'AMARILLO'}
+  ];
+  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const html=items.map(x=>{
+    const cls=x.level==='NARANJA'?'high':'medium';
+    const badge=x.level==='NARANJA'?'danger':'warn';
+    return `<div class="alert-card official ${cls}"><div><span class="badge ${badge}">HISTÓRICO</span> <span class="alert-title">${esc(x.title)}</span></div><div class="alert-meta">SENAMHI · N.º ${esc(x.number)} · Inicio: ${esc(x.start_at)} · Fin: ${esc(x.end_at)} · Aviso pasado</div><a class="alert-link" href="https://web2.senamhi.gob.pe/?p=avisos" target="_blank" rel="noopener">Ver aviso oficial</a></div>`;
+  }).join('');
+  if($('pastOfficialAlerts')) $('pastOfficialAlerts').innerHTML=html;
+  if($('pastOfficialTitle')) $('pastOfficialTitle').style.display='block';
+  if($('currentOfficialTitle')) $('currentOfficialTitle').style.display='block';
+  if($('alertsStatus')) $('alertsStatus').textContent='Histórico oficial disponible · consultando SENAMHI…';
+}
+
+'''
+
+          if 'function renderHistoricalOfficialFallback()' not in text:
+              text=text.replace(marker, fallback+marker, 1)
+
+          text=text.replace("async function loadAWS(){\n  if(!api())", "async function loadAWS(){\n  renderHistoricalOfficialFallback();\n  if(!api())", 1)
+          text=text.replace("$('alertsStatus').textContent='No se pudieron consultar las alertas.';", "$('alertsStatus').textContent='Histórico oficial disponible · SENAMHI no respondió en este momento.';\n    renderHistoricalOfficialFallback();", 1)
+          text=text.replace("readNewsCache();\nrefreshAll();", "readNewsCache();\nrenderHistoricalOfficialFallback();\nrefreshAll();", 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Commit and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dashboard/index.html .github/workflows/fix-official-history-ui.yml
+          git commit -m "Fix official history UI" || exit 0
+          git push
