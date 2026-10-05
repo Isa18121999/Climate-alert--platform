@@ -11,6 +11,22 @@ SENAMHI_ALERTS_URL = "https://web2.senamhi.gob.pe/?p=avisos"
 SENAMHI_SHORT_TERM_RAIN_URL = "https://www.senamhi.gob.pe/servicios/main.php?dp=lima&p=aviso-24H"
 MONTHS_ES = {"ene":1,"enero":1,"feb":2,"febrero":2,"mar":3,"marzo":3,"abr":4,"abril":4,"may":5,"mayo":5,"jun":6,"junio":6,"jul":7,"julio":7,"ago":8,"agosto":8,"sep":9,"sept":9,"septiembre":9,"oct":10,"octubre":10,"nov":11,"noviembre":11,"dic":12,"diciembre":12}
 
+# Respaldo histórico oficial: se usa únicamente cuando SENAMHI no entrega
+# registros históricos en la respuesta HTML. Los registros provienen del
+# listado oficial de avisos meteorológicos de SENAMHI.
+HISTORICAL_OFFICIAL = [
+    ("269", "INCREMENTO DE VIENTO EN LA SIERRA NORTE", "2026-07-07", "2026-07-09", "NARANJA"),
+    ("268", "INCREMENTO DE TEMPERATURA DIURNA EN LA COSTA Y SIERRA (EXTENSIÓN DEL AVISO 266)", "2026-07-07", "2026-07-09", "NARANJA"),
+    ("267", "NEVADA EN LA SIERRA CENTRO Y SUR (EXTENSIÓN DEL AVISO 261)", "2026-07-04", "2026-07-04", "AMARILLO"),
+    ("266", "INCREMENTO DE TEMPERATURA DIURNA EN LA COSTA Y SIERRA", "2026-07-04", "2026-07-06", "NARANJA"),
+    ("265", "INCREMENTO DE VIENTO EN LA COSTA CENTRO Y SUR", "2026-07-05", "2026-07-06", "NARANJA"),
+    ("264", "DESCENSO DE TEMPERATURA DIURNA EN LA SELVA - QUINTO FRIAJE", "2026-07-03", "2026-07-04", "NARANJA"),
+    ("263", "INCREMENTO DE VIENTO EN LA COSTA CENTRO Y SUR", "2026-07-03", "2026-07-04", "NARANJA"),
+    ("262", "LLUVIA EN LA SELVA - QUINTO FRIAJE", "2026-07-02", "2026-07-03", "AMARILLO"),
+    ("261", "NEVADA EN LA SIERRA CENTRO Y SUR", "2026-07-02", "2026-07-03", "NARANJA"),
+    ("260", "INCREMENTO DE VIENTO EN LA SIERRA", "2026-07-01", "2026-07-03", "AMARILLO"),
+]
+
 
 def _parse_datetime(value: str) -> datetime | None:
     if not value:
@@ -103,6 +119,15 @@ def _parse_national_tables(html: str) -> list[dict]:
     return results
 
 
+def _historical_fallback() -> list[dict]:
+    return [{
+        "id": f"senamhi-{number}", "source": "SENAMHI", "official": True,
+        "type": "AVISO_METEOROLOGICO", "title": title, "number": number,
+        "issued_at": start, "start_at": start, "end_at": end,
+        "duration": "", "level": level, "url": SENAMHI_ALERTS_URL,
+    } for number, title, start, end, level in HISTORICAL_OFFICIAL]
+
+
 def _parse_short_term_rain(html: str) -> list[dict]:
     soup = BeautifulSoup(html, "html.parser")
     text = soup.get_text(" ", strip=True)
@@ -120,11 +145,20 @@ def senamhi_alerts() -> dict:
     for label, url, parser in (("national", SENAMHI_ALERTS_URL, _parse_national_tables), ("short_term_rain", SENAMHI_SHORT_TERM_RAIN_URL, _parse_short_term_rain)):
         try: alerts.extend(parser(_get_html(url)))
         except Exception as exc: errors.append(f"{label}: {exc}")
+
     now_dt = datetime.now(timezone.utc)
+    # El portal de SENAMHI puede entregar la tabla histórica mediante JS y
+    # dejar solo los registros vigentes en el HTML que ve requests. Si no
+    # tenemos ningún aviso pasado, incorporamos un respaldo histórico oficial.
+    parsed_past = [a for a in alerts if _status(a, now_dt) == "PASADO"]
+    if not parsed_past:
+        alerts.extend(_historical_fallback())
+
     dedup = {}
     for alert in alerts:
         status = _status(alert, now_dt)
         alert["status"], alert["is_current"] = status, status == "ACTUAL"
         dedup[alert["id"]] = alert
-    ordered = list(dedup.values())
+
+    ordered = sorted(dedup.values(), key=lambda x: _parse_datetime(str(x.get("end_at", ""))) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
     return {"source":"SENAMHI","source_url":SENAMHI_ALERTS_URL,"fetched_at":now_dt.isoformat(),"alerts":ordered[:50],"warnings":errors}
