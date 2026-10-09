@@ -13,12 +13,18 @@ from external_apis import flood, news, weather
 from senamhi import senamhi_alerts
 
 
+# ============================================================
+# SERVICIOS AWS UTILIZADOS POR LA API
+# ============================================================
+# DynamoDB almacena mediciones y alertas. SNS se utiliza para enviar
+# notificaciones cuando se detecta un nivel de riesgo relevante.
 measurements = boto3.resource("dynamodb").Table(os.environ["MEASUREMENTS_TABLE"])
 alerts = boto3.resource("dynamodb").Table(os.environ["ALERTS_TABLE"])
 sns = boto3.client("sns")
 
 
 def response(status: int, body: dict) -> dict:
+    """Construye una respuesta HTTP compatible con API Gateway."""
     return {
         "statusCode": status,
         "headers": {
@@ -32,14 +38,18 @@ def response(status: int, body: dict) -> dict:
 
 
 def _body(event: dict) -> dict:
+    """Convierte el cuerpo de una petición Lambda desde JSON a diccionario."""
     raw = event.get("body") or "{}"
     return json.loads(raw) if isinstance(raw, str) else raw
 
 
 def app(event: dict, _context) -> dict:
+    """Punto de entrada principal de la función Lambda."""
+    # El monitor se ejecuta mediante una invocación especial con action=monitor.
     if event.get("action") == "monitor":
         return run_monitor()
 
+    # API Gateway HTTP API entrega método, ruta y parámetros dentro del evento.
     request_http = event.get("requestContext", {}).get("http", {})
     method = request_http.get("method", "")
     path = event.get("rawPath") or request_http.get("path", "")
@@ -47,6 +57,7 @@ def app(event: dict, _context) -> dict:
     route = route_key if route_key and route_key != "$default" else f"{method} {path}"
 
     try:
+        # Cada condición conecta una ruta HTTP con la función que la atiende.
         if route.startswith("POST /measurements"):
             return ingest_measurement(_body(event))
         if route.startswith("GET /measurements"):
@@ -80,13 +91,17 @@ def app(event: dict, _context) -> dict:
 
 
 def ingest_measurement(data: dict) -> dict:
+    """Registra una medición, calcula su riesgo y genera una alerta si corresponde."""
     station_id = str(data["station_id"])
     rain = float(data["rain_mm_h"])
     river = float(data["river_level_m"])
     timestamp = data.get("timestamp") or datetime.now(timezone.utc).isoformat()
+
+    # El motor de riesgo transforma lluvia y nivel de río en nivel, puntaje y razones.
     result = evaluate_risk(rain, river)
     measurement_id = f"{timestamp}#{uuid.uuid4().hex[:8]}"
 
+    # Decimal evita problemas de precisión y es compatible con DynamoDB.
     location = data.get("location", {}) or {}
     if isinstance(location, dict):
         location = {
@@ -107,6 +122,7 @@ def ingest_measurement(data: dict) -> dict:
     }
     measurements.put_item(Item=item)
 
+    # Solo los niveles ALTO y CRITICO generan una alerta y pueden activar SNS.
     if result.level in {"ALTO", "CRITICO"}:
         alert_id = f"{timestamp}#{uuid.uuid4().hex[:8]}"
         alert = {
@@ -131,10 +147,12 @@ def ingest_measurement(data: dict) -> dict:
 
 
 def run_monitor() -> dict:
+    """Ejecuta el monitoreo automático de clima, río y avisos SENAMHI."""
     lat = float(os.getenv("DEFAULT_LAT", "-5.1945"))
     lon = float(os.getenv("DEFAULT_LON", "-80.6328"))
     station_id = os.getenv("DEFAULT_STATION_ID", "PIURA-001")
 
+    # Se consultan las fuentes meteorológica e hidrológica externas.
     weather_data = weather(lat, lon)
     flood_data = flood(lat, lon)
     current = weather_data.get("current") or {}
@@ -143,6 +161,7 @@ def run_monitor() -> dict:
     river_values = daily.get("river_discharge") or [0]
     river = float(river_values[0] or 0)
 
+    # Se calcula el riesgo con los valores obtenidos automáticamente.
     result = evaluate_risk(rain, river)
     created = []
 
@@ -169,6 +188,7 @@ def run_monitor() -> dict:
     except Exception as exc:
         print(f"No se pudo guardar la medición automática: {exc}")
 
+    # Si el riesgo calculado es alto o crítico, se crea una alerta deduplicada.
     if result.level in {"ALTO", "CRITICO"}:
         bucket = datetime.now(timezone.utc).strftime("%Y%m%d%H")
         alert_id = f"risk-{station_id}-{bucket}"
@@ -198,6 +218,7 @@ def run_monitor() -> dict:
             if "ConditionalCheckFailed" not in str(exc):
                 raise
 
+    # Se consultan los avisos oficiales publicados por SENAMHI.
     official = senamhi_alerts()
     for item in official.get("alerts", []):
         alert_id = f"official-{item['id']}"
@@ -247,6 +268,7 @@ def run_monitor() -> dict:
 
 
 def list_items(table) -> dict:
+    """Consulta hasta 50 registros de una tabla DynamoDB y los ordena por fecha."""
     result = table.scan(Limit=50)
     items = sorted(result.get("Items", []), key=lambda x: str(x.get("timestamp", "")), reverse=True)
     return response(200, {"items": items[:50]})
