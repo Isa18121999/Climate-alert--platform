@@ -1,0 +1,77 @@
+name: Configure persistent measurements
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, 'Configure persistent measurements') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch API and Render database wiring
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          app = Path('api/app.py')
+          text = app.read_text(encoding='utf-8')
+
+          if 'DATABASE_URL = os.getenv("DATABASE_URL")' not in text:
+              text = text.replace(
+                  'import requests\n',
+                  'import requests\nimport psycopg2\nimport psycopg2.extras\n',
+                  1,
+              )
+              text = text.replace(
+                  'measurements: list[dict] = []\n',
+                  '''DATABASE_URL = os.getenv("DATABASE_URL")\n\n\ndef _db_connect():\n    if not DATABASE_URL:\n        return None\n    return psycopg2.connect(DATABASE_URL, connect_timeout=5)\n\n\ndef _init_measurements_db():\n    conn = _db_connect()\n    if conn is None:\n        return\n    try:\n        with conn:\n            with conn.cursor() as cur:\n                cur.execute("""\n                    CREATE TABLE IF NOT EXISTS measurements (\n                        id TEXT PRIMARY KEY,\n                        station_id TEXT NOT NULL,\n                        timestamp TEXT NOT NULL,\n                        rain_mm_h DOUBLE PRECISION NOT NULL,\n                        river_level_m DOUBLE PRECISION NOT NULL,\n                        risk_level TEXT NOT NULL,\n                        risk_reasons JSONB NOT NULL,\n                        location JSONB NOT NULL\n                    )\n                """)\n    finally:\n        conn.close()\n\n\ndef _store_measurement(item: dict):\n    conn = _db_connect()\n    if conn is None:\n        measurements.insert(0, item)\n        return\n    try:\n        with conn:\n            with conn.cursor() as cur:\n                cur.execute(\n                    """INSERT INTO measurements\n                    (id, station_id, timestamp, rain_mm_h, river_level_m, risk_level, risk_reasons, location)\n                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)\n                    ON CONFLICT (id) DO NOTHING""",\n                    (\n                        item["id"], item["station_id"], item["timestamp"],\n                        item["rain_mm_h"], item["river_level_m"], item["risk_level"],\n                        psycopg2.extras.Json(item["risk_reasons"]),\n                        psycopg2.extras.Json(item["location"]),\n                    ),\n                )\n    finally:\n        conn.close()\n\n\ndef _load_measurements(limit: int = 50) -> list[dict]:\n    conn = _db_connect()\n    if conn is None:\n        return measurements[:limit]\n    try:\n        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:\n            cur.execute(\n                """SELECT id, station_id, timestamp, rain_mm_h, river_level_m, risk_level, risk_reasons, location\n                   FROM measurements ORDER BY timestamp DESC LIMIT %s""",\n                (limit,),\n            )\n            rows = cur.fetchall()\n            return [dict(row) for row in rows]\n    finally:\n        conn.close()\n\n\nmeasurements: list[dict] = []\n''',
+                  1,
+              )
+              text = text.replace(
+                  'measurements.insert(0, item);\n    if level in {"ALTO", "CRITICO"}:',
+                  '_store_measurement(item)\n    if level in {"ALTO", "CRITICO"}:',
+                  1,
+              )
+              text = text.replace(
+                  '@app.get("/measurements")\ndef list_measurements(): return jsonify({"items": measurements[:50]})',
+                  '@app.get("/measurements")\ndef list_measurements(): return jsonify({"items": _load_measurements(50)})',
+                  1,
+              )
+              marker = '@app.get("/alerts")'
+              text = text.replace(marker, '_init_measurements_db()\n\n\n' + marker, 1)
+              app.write_text(text, encoding='utf-8')
+
+          render = Path('render.yaml')
+          yaml = render.read_text(encoding='utf-8')
+          if 'key: DATABASE_URL' not in yaml:
+              needle = '    autoDeploy: true\n'
+              addition = '''    autoDeploy: true\n    envVars:\n      - key: DATABASE_URL\n        fromDatabase:\n          name: climate-alert-platform-db\n          property: connectionString\n'''
+              yaml = yaml.replace(needle, addition, 1)
+          if '  - name: climate-alert-platform-db\n' not in yaml:
+              yaml += '''\n  - type: pserv\n    name: climate-alert-platform-db\n    plan: free\n    runtime: postgres\n    region: oregon\n    postgresMajorVersion: '18'\n'''
+          render.write_text(yaml, encoding='utf-8')
+          PY
+
+      - name: Verify patch
+        run: |
+          python -m py_compile api/app.py
+          grep -q 'DATABASE_URL = os.getenv("DATABASE_URL")' api/app.py
+          grep -q 'key: DATABASE_URL' render.yaml
+
+      - name: Commit changes and remove one-time workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add api/app.py render.yaml .github/workflows/persist-measurements-once.yml
+          git rm .github/workflows/persist-measurements-once.yml
+          git commit -m "Configure persistent measurements with Render Postgres"
+          git push
