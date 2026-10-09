@@ -12,7 +12,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#eef5f8}ifr
 </style>
 </head>
 <body>
-<iframe id="app" src="index-original.html?v=20261009-news-fix1" title="Climate Alert Platform"></iframe>
+<iframe id="app" src="index-original.html?v=20261009-news-images1" title="Climate Alert Platform"></iframe>
 <script>
 const HIST=[
 ['269','INCREMENTO DE VIENTO EN LA SIERRA NORTE','2026-07-07','2026-07-09','NARANJA'],
@@ -34,9 +34,7 @@ function patchNewsFetch(){
     const originalFetch=w.fetch.bind(w);
     w.fetch=function(url,options){
       const target=String(url||'');
-      if(/\/news(?:\?|$)/i.test(target)){
-        return originalFetch(url,{cache:'no-store',headers:(options&&options.headers)||{}});
-      }
+      if(/\/news(?:\?|$)/i.test(target))return originalFetch(url,{...(options||{}),cache:'no-store'});
       return originalFetch(url,options);
     };
     w.__newsFetchPatched=true;
@@ -87,51 +85,90 @@ async function syncRecentMeasurements(){
     const data=await response.json();
     const items=Array.isArray(data.items)?data.items:[];
     d.querySelectorAll('.recent-measurement-alert').forEach(x=>x.remove());
-    const recent=items.filter(item=>{
-      const risk=String(item.risk_level||'').toUpperCase();
-      const t=Date.parse(item.timestamp||'');
-      if(!['ALTO','CRITICO'].includes(risk)||Number.isNaN(t))return false;
-      const age=Date.now()-t;
-      return age>=0&&age<=15*60*1000;
-    }).sort((a,b)=>Date.parse(b.timestamp)-Date.parse(a.timestamp));
+    const recent=items.filter(item=>{const risk=String(item.risk_level||'').toUpperCase();const t=Date.parse(item.timestamp||'');if(!['ALTO','CRITICO'].includes(risk)||Number.isNaN(t))return false;const age=Date.now()-t;return age>=0&&age<=15*60*1000}).sort((a,b)=>Date.parse(b.timestamp)-Date.parse(a.timestamp));
     if(!recent.length)return;
     let label=target.querySelector('.recent-measurement-label');
     if(!label){label=d.createElement('div');label.className='label recent-measurement-label';label.style.marginTop='12px';label.textContent='⚠️ Riesgo calculado por medición reciente';target.appendChild(label)}
-    recent.forEach(item=>{
-      const card=d.createElement('div');
-      const risk=String(item.risk_level).toUpperCase();
-      const cls=risk==='CRITICO'?'critical':'medium';
-      const level=risk==='CRITICO'?'EXTREMA':'FUERTE';
-      const badge=risk==='CRITICO'?'danger':'warn';
-      const when=new Date(item.timestamp).toLocaleString('es-PE',{dateStyle:'short',timeStyle:'short'});
-      card.className='alert-card recent-measurement-alert '+cls;
-      card.dataset.measurementId=item.id||'';
-      card.innerHTML='<div><span class="badge '+badge+'">'+level+'</span> <span class="alert-title">Riesgo calculado por medición registrada</span></div>'+
-        '<div class="alert-meta">Estación: '+(item.station_id||'—')+' · Lluvia: '+Number(item.rain_mm_h||0).toFixed(1)+' mm/h · Caudal/nivel: '+Number(item.river_level_m||0).toFixed(1)+' · Registrada: '+when+' · Medición reciente (≤ 15 min)</div>';
-      target.appendChild(card);
-    });
+    recent.forEach(item=>{const card=d.createElement('div');const risk=String(item.risk_level).toUpperCase();const cls=risk==='CRITICO'?'critical':'medium';const level=risk==='CRITICO'?'EXTREMA':'FUERTE';const badge=risk==='CRITICO'?'danger':'warn';const when=new Date(item.timestamp).toLocaleString('es-PE',{dateStyle:'short',timeStyle:'short'});card.className='alert-card recent-measurement-alert '+cls;card.dataset.measurementId=item.id||'';card.innerHTML='<div><span class="badge '+badge+'">'+level+'</span> <span class="alert-title">Riesgo calculado por medición registrada</span></div><div class="alert-meta">Estación: '+(item.station_id||'—')+' · Lluvia: '+Number(item.rain_mm_h||0).toFixed(1)+' mm/h · Caudal/nivel: '+Number(item.river_level_m||0).toFixed(1)+' · Registrada: '+when+' · Medición reciente (≤ 15 min)</div>';target.appendChild(card)});
   }catch(e){console.warn('No se pudieron consultar las mediciones recientes:',e)}
 }
 function fixNews(){
   const d=getDoc();if(!d)return;
-  try{localStorage.removeItem('climate_alert_news_climate_pe_v8')}catch(e){}
   const box=d.getElementById('news');if(!box)return;
   const items=[...box.querySelectorAll('.news-item')];
   const climate=/(lluvia|lluvias|precipitaci[oó]n|inundaci[oó]n|inundaciones|desborde|huaico|huayco|tormenta|crecida|caudal|quebrada|deslizamiento|r[ií]o|senamhi|friaje|helada|granizo|nevadas?|cicl[oó]n|fen[oó]meno el ni[nñ]o|el ni[nñ]o costero|temperatura extrema|viento fuerte|vientos fuertes|oleaje)/i;
   const peru=/(per[uú]|lima|callao|piura|tumbes|lambayeque|la libertad|trujillo|chiclayo|ancash|[aá]ncash|hu[aá]nuco|pasco|jun[ií]n|ica|arequipa|moquegua|tacna|cusco|puno|ayacucho|apur[ií]mac|huancavelica|amazonas|cajamarca|san mart[ií]n|ucayali|madre de dios|loreto|senamhi|indeci|rpp|el comercio|la rep[uú]blica|andina|gesti[oó]n|per[uú]21)/i;
   const generic=/(pol[ií]tica|elecciones|congreso|partido pol[ií]tico|feij[oó]o|moedas|seguridad|habitaci[oó]n|deportes|entretenimiento|hor[oó]scopo|rusia|cient[ií]fica por un accidente|bater[ií]as en un laboratorio)/i;
   let kept=0;
-  items.forEach(item=>{
-    const text=(item.textContent||'').toLowerCase();
-    const ok=climate.test(text)&&peru.test(text)&&!generic.test(text);
-    if(!ok)item.remove();else kept++;
-  });
+  items.forEach(item=>{const text=(item.textContent||'').toLowerCase();const ok=climate.test(text)&&peru.test(text)&&!generic.test(text);if(!ok)item.remove();else kept++});
   const count=d.getElementById('newsCount');if(count)count.textContent=String(kept);
   if(!kept&&!/Reintentando noticias/i.test((d.getElementById('newsStatus')||{}).textContent||''))box.innerHTML='<div class="empty">No se encontraron noticias climáticas relevantes de Perú.</div>';
 }
-function fix(){patchNewsFetch();fixHistory();normalizeSeverity();moveCalculatedAlertsToCurrent();fixNews();syncRecentMeasurements()}
+const NEWS_FALLBACKS={
+  lluvia:'https://images.unsplash.com/photo-1519692933481-e162a57d6721?auto=format&fit=crop&w=900&q=80',
+  inundacion:'https://images.unsplash.com/photo-1547683905-f686c993aae5?auto=format&fit=crop&w=900&q=80',
+  huaico:'https://images.unsplash.com/photo-1547683905-f686c993aae5?auto=format&fit=crop&w=900&q=80',
+  friaje:'https://images.unsplash.com/photo-1511497584788-876760111969?auto=format&fit=crop&w=900&q=80',
+  viento:'https://images.unsplash.com/photo-1500534623283-312aade485b7?auto=format&fit=crop&w=900&q=80',
+  default:'https://images.unsplash.com/photo-1501630834273-4b5604d2ee31?auto=format&fit=crop&w=900&q=80'
+};
+function newsImage(article){
+  if(article.socialimage||article.image_url)return article.socialimage||article.image_url;
+  const text=((article.title||'')+' '+(article.description||'')).toLowerCase();
+  if(/huaico|huayco|inund|desborde|río|rio|caudal/.test(text))return NEWS_FALLBACKS.inundacion;
+  if(/friaje|helada|nieve|nev/.test(text))return NEWS_FALLBACKS.friaje;
+  if(/viento|oleaje|tormenta/.test(text))return NEWS_FALLBACKS.viento;
+  if(/lluvia|precipit/.test(text))return NEWS_FALLBACKS.lluvia;
+  return NEWS_FALLBACKS.default;
+}
+function newsSeverity(article){
+  const s=String(article.severity||'').toUpperCase();
+  if(s==='CRITICA')return ['EXTREMA','danger'];
+  if(s==='ALTA')return ['FUERTE','warn'];
+  if(s==='MEDIA')return ['MODERADA','warn'];
+  return ['BAJA','ok'];
+}
+async function renderNewsWithImages(){
+  const d=getDoc();if(!d)return;
+  const box=d.getElementById('news');if(!box)return;
+  const apiInput=d.getElementById('api');const base=(apiInput&&apiInput.value?apiInput.value:'https://climate-alert-platform-api.onrender.com').replace(/\/$/,'');
+  try{
+    const r=await fetch(base+'/news?q='+encodeURIComponent('Perú alerta climática lluvias inundaciones desbordes huaicos SENAMHI El Niño Costero'),{cache:'no-store'});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const data=await r.json();
+    const articles=Array.isArray(data.articles)?data.articles:[];
+    const climate=/(lluvia|lluvias|precipitaci[oó]n|inundaci[oó]n|inundaciones|desborde|huaico|huayco|tormenta|crecida|caudal|quebrada|deslizamiento|r[ií]o|senamhi|friaje|helada|granizo|nevadas?|cicl[oó]n|fen[oó]meno el ni[nñ]o|el ni[nñ]o costero|temperatura extrema|viento fuerte|vientos fuertes|oleaje)/i;
+    const generic=/(pol[ií]tica|elecciones|congreso|partido pol[ií]tico|deportes|entretenimiento|hor[oó]scopo|rusia|informativa)/i;
+    const valid=articles.filter(a=>climate.test((a.title||'')+' '+(a.description||''))&&!generic.test((a.title||'')+' '+(a.description||''))).slice(0,12);
+    if(!valid.length){box.innerHTML='<div class="empty">No se encontraron noticias climáticas relevantes de Perú.</div>';return}
+    box.innerHTML=valid.map(a=>{const [level,cls]=newsSeverity(a);const img=newsImage(a);const date=a.published_at||a.seendate||'';const when=date?new Date(date).toLocaleDateString('es-PE',{day:'2-digit',month:'2-digit',year:'numeric'}):'';return '<article class="news-item climate-news-image" style="display:grid;grid-template-columns:110px 1fr;gap:12px;align-items:start"><img src="'+img+'" alt="Imagen relacionada con '+(a.title||'noticia climática de Perú').replace(/"/g,'&quot;')+'" loading="lazy" referrerpolicy="no-referrer" style="width:110px;height:82px;object-fit:cover;border-radius:12px;border:1px solid var(--line);background:#eef5f8" onerror="this.style.display=\'none\'"/><div class="news-body"><div><span class="news-level '+cls+'">'+level+'</span></div><a href="'+(a.url||'#')+'" target="_blank" rel="noopener">'+(a.title||'Noticia climática')+'</a><div class="news-source">'+(a.source||a.domain||'Fuente peruana')+(when?' · '+when:'')+'</div><div class="news-source">'+(a.description||'').slice(0,180)+'</div></div></article>'}).join('');
+    const count=d.getElementById('newsCount');if(count)count.textContent=String(valid.length);
+  }catch(e){console.warn('No se pudieron cargar las noticias con imágenes:',e);fixNews()}
+}
+let lastWeatherCheck=0;
+async function enhanceLocationWeather(){
+  const d=getDoc();if(!d)return;
+  if(Date.now()-lastWeatherCheck<30000)return;lastWeatherCheck=Date.now();
+  const latEl=d.getElementById('lat'),lonEl=d.getElementById('lon');
+  const lat=Number(latEl&&latEl.value),lon=Number(lonEl&&lonEl.value);if(!Number.isFinite(lat)||!Number.isFinite(lon))return;
+  let panel=d.getElementById('locationWeatherPanel');
+  if(!panel){
+    panel=d.createElement('section');panel.id='locationWeatherPanel';panel.className='card';panel.style.marginTop='16px';
+    panel.innerHTML='<div class="card-head"><div><div class="card-title"><span>📍</span><div><h2>Condiciones de la ubicación</h2><div class="card-kicker">Temperatura, viento, humedad y precipitación</div></div></div></div><span class="status" id="locationWeatherStatus">Consultando…</span></div><div id="locationWeatherGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px"></div>';
+    const summary=d.querySelector('.summary');if(summary&&summary.parentNode)summary.parentNode.insertBefore(panel,summary.nextSibling);else d.body.insertBefore(panel,d.body.firstChild);
+  }
+  try{
+    const base=((d.getElementById('api')||{}).value||'https://climate-alert-platform-api.onrender.com').replace(/\/$/,'');
+    const r=await fetch(base+'/weather?lat='+encodeURIComponent(lat)+'&lon='+encodeURIComponent(lon),{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);const data=await r.json();const c=data.current||{};
+    const unit=(k,def='—')=>c[k]===undefined||c[k]===null?def:String(c[k]);
+    const cells=[['🌡️','Temperatura',unit('temperature_2m')+' °C'],['💨','Viento',unit('wind_speed_10m')+' km/h'],['💧','Humedad',unit('relative_humidity_2m')+' %'],['🌧️','Precipitación',unit('precipitation')+' mm']];
+    d.getElementById('locationWeatherGrid').innerHTML=cells.map(x=>'<div style="padding:13px;border:1px solid var(--line);border-radius:14px;background:#fbfdfe"><div style="font-size:18px">'+x[0]+'</div><div style="font-size:10px;color:var(--muted);font-weight:800;text-transform:uppercase;margin-top:6px">'+x[1]+'</div><div style="font-size:20px;font-weight:900;margin-top:3px">'+x[2]+'</div></div>').join('');
+    const status=d.getElementById('locationWeatherStatus');if(status)status.textContent='📍 '+lat.toFixed(4)+', '+lon.toFixed(4);
+  }catch(e){const status=d.getElementById('locationWeatherStatus');if(status)status.textContent='No disponible';}
+}
+function fix(){patchNewsFetch();fixHistory();normalizeSeverity();moveCalculatedAlertsToCurrent();syncRecentMeasurements();enhanceLocationWeather()}
 const f=document.getElementById('app');
-f.addEventListener('load',()=>{patchNewsFetch();fix();setInterval(fix,1000)});
+f.addEventListener('load',()=>{patchNewsFetch();fix();setTimeout(renderNewsWithImages,800);setInterval(fix,1000);setInterval(renderNewsWithImages,60000)});
 </script>
 </body>
 </html>
