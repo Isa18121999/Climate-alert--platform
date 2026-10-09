@@ -12,7 +12,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#eef5f8}ifr
 </style>
 </head>
 <body>
-<iframe id="app" src="index-original.html?v=20261005-recent-measurement1" title="Climate Alert Platform"></iframe>
+<iframe id="app" src="index-original.html?v=20261009-news-fix1" title="Climate Alert Platform"></iframe>
 <script>
 const HIST=[
 ['269','INCREMENTO DE VIENTO EN LA SIERRA NORTE','2026-07-07','2026-07-09','NARANJA'],
@@ -27,6 +27,21 @@ const HIST=[
 ['260','INCREMENTO DE VIENTO EN LA SIERRA','2026-07-01','2026-07-03','AMARILLO']
 ];
 function getDoc(){const f=document.getElementById('app');try{return f&&f.contentDocument?f.contentDocument:null}catch(e){return null}}
+function patchNewsFetch(){
+  const f=document.getElementById('app');
+  try{
+    const w=f&&f.contentWindow;if(!w||w.__newsFetchPatched)return;
+    const originalFetch=w.fetch.bind(w);
+    w.fetch=function(url,options){
+      const target=String(url||'');
+      if(/\/news(?:\?|$)/i.test(target)){
+        return originalFetch(url,{cache:'no-store',headers:(options&&options.headers)||{}});
+      }
+      return originalFetch(url,options);
+    };
+    w.__newsFetchPatched=true;
+  }catch(e){console.warn('No se pudo preparar la carga de noticias:',e)}
+}
 function fixHistory(){
   const d=getDoc();if(!d||!d.getElementById('pastOfficialAlerts'))return;
   const box=d.getElementById('pastOfficialAlerts'),title=d.getElementById('pastOfficialTitle'),status=d.getElementById('alertsStatus');
@@ -58,10 +73,6 @@ function moveCalculatedAlertsToCurrent(){
   if(!target.querySelector('.'+marker)){const label=d.createElement('div');label.className='label '+marker;label.style.marginTop='12px';label.textContent='⚠️ Riesgo calculado por Climate Alert';target.appendChild(label)}
   cards.forEach(card=>{const key=(card.textContent||'').trim();if(![...target.querySelectorAll('.alert-card')].some(x=>(x.textContent||'').trim()===key))target.appendChild(card)});source.innerHTML='';
 }
-
-// Solo una medición registrada durante los últimos 15 minutos puede
-// convertirse en un aviso actual. Las mediciones antiguas permanecen
-// en el historial/Mediciones registradas y nunca se muestran como actuales.
 let lastMeasurementCheck=0;
 async function syncRecentMeasurements(){
   const d=getDoc();if(!d)return;
@@ -99,14 +110,8 @@ async function syncRecentMeasurements(){
         '<div class="alert-meta">Estación: '+(item.station_id||'—')+' · Lluvia: '+Number(item.rain_mm_h||0).toFixed(1)+' mm/h · Caudal/nivel: '+Number(item.river_level_m||0).toFixed(1)+' · Registrada: '+when+' · Medición reciente (≤ 15 min)</div>';
       target.appendChild(card);
     });
-  }catch(e){
-    console.warn('No se pudieron consultar las mediciones recientes:',e);
-  }
+  }catch(e){console.warn('No se pudieron consultar las mediciones recientes:',e)}
 }
-
-// Filtro visual de última línea: elimina cualquier noticia que no tenga
-// un fenómeno climático concreto Y una referencia clara a Perú.
-// "alerta" por sí sola NO es un fenómeno climático.
 function fixNews(){
   const d=getDoc();if(!d)return;
   try{localStorage.removeItem('climate_alert_news_climate_pe_v8')}catch(e){}
@@ -122,11 +127,11 @@ function fixNews(){
     if(!ok)item.remove();else kept++;
   });
   const count=d.getElementById('newsCount');if(count)count.textContent=String(kept);
-  if(!kept)box.innerHTML='<div class="empty">No se encontraron noticias climáticas relevantes de Perú.</div>';
+  if(!kept&&!/Reintentando noticias/i.test((d.getElementById('newsStatus')||{}).textContent||''))box.innerHTML='<div class="empty">No se encontraron noticias climáticas relevantes de Perú.</div>';
 }
-function fix(){fixHistory();normalizeSeverity();moveCalculatedAlertsToCurrent();fixNews();syncRecentMeasurements()}
+function fix(){patchNewsFetch();fixHistory();normalizeSeverity();moveCalculatedAlertsToCurrent();fixNews();syncRecentMeasurements()}
 const f=document.getElementById('app');
-f.addEventListener('load',()=>{fix();setInterval(fix,1000)});
+f.addEventListener('load',()=>{patchNewsFetch();fix();setInterval(fix,1000)});
 </script>
 </body>
 </html>
