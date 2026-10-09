@@ -10,7 +10,7 @@
 <style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#eef5f8}iframe{display:block;width:100%;height:100%;border:0}</style>
 </head>
 <body>
-<iframe id="dashboardFrame" src="index-original.html?v=20261009-senamhi-counter5" title="Climate Alert Platform"></iframe>
+<iframe id="dashboardFrame" src="index-original.html?v=20261009-senamhi-counter6" title="Climate Alert Platform"></iframe>
 <script>
 const frame=document.getElementById('dashboardFrame');
 function patchCounter(){
@@ -34,7 +34,20 @@ function patchCounter(){
     counterEl.textContent=`SENAMHI: ${current} actuales · ${past} pasados`;
   }catch(e){console.warn('No se pudo actualizar el contador SENAMHI',e)}
 }
-frame.addEventListener('load',()=>{patchCounter();setTimeout(patchCounter,500);setTimeout(patchCounter,1500);setInterval(patchCounter,3000)});
+function patchSeverityLabels(){
+  try{
+    const d=frame.contentDocument;if(!d||!d.body)return;
+    d.querySelectorAll('.badge').forEach(b=>{
+      if(!/^HIST[ÓO]RICO$/i.test((b.textContent||'').trim()))return;
+      const card=b.closest('.alert-card');
+      if(!card)return;
+      const cls=card.classList;
+      b.textContent=cls.contains('critical')?'ROJO':cls.contains('high')?'NARANJA':cls.contains('medium')?'AMARILLO':(b.textContent||'').trim();
+    });
+  }catch(e){console.warn('No se pudo actualizar la gravedad SENAMHI',e)}
+}
+function patchDashboard(){patchCounter();patchSeverityLabels()}
+frame.addEventListener('load',()=>{patchDashboard();setTimeout(patchDashboard,500);setTimeout(patchDashboard,1500);setInterval(patchDashboard,3000)});
 </script>
 </body>
 </html>
