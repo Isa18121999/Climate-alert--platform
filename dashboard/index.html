@@ -7,35 +7,34 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Climate Alert Platform</title>
-<style>
-html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#eef5f8}iframe{display:block;width:100%;height:100%;border:0}
-</style>
+<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#eef5f8}iframe{display:block;width:100%;height:100%;border:0}</style>
 </head>
 <body>
-<iframe id="dashboardFrame" src="index-original.html?v=20261009-senamhi-counter4" title="Climate Alert Platform"></iframe>
+<iframe id="dashboardFrame" src="index-original.html?v=20261009-senamhi-counter5" title="Climate Alert Platform"></iframe>
 <script>
 const frame=document.getElementById('dashboardFrame');
-function patch(){
+function patchCounter(){
   try{
-    const d=frame.contentDocument;if(!d)return;
-    const body=d.body;if(!body)return;
-    const walker=d.createTreeWalker(body,NodeFilter.SHOW_TEXT);
+    const d=frame.contentDocument;if(!d||!d.body)return;
+    const walker=d.createTreeWalker(d.body,NodeFilter.SHOW_TEXT);
     const nodes=[];let n;while(n=walker.nextNode())nodes.push(n);
-    nodes.forEach(node=>{
-      if(!node.nodeValue.includes('SENAMHI:'))return;
-      const el=node.parentElement;
-      if(!el)return;
-      if(el.dataset.senamhiCounterPatched==='1')return;
-      el.dataset.senamhiCounterPatched='1';
-      const original=node.nodeValue;
-      const m=original.match(/SENAMHI:\s*(\d+)\s*(?:vigentes|actuales?)\s*[·•]\s*(\d+)\s*pasados?/i);
-      if(m){
-        el.textContent=original.replace(m[0],`SENAMHI: ${m[1]} actuales · ${m[2]} pasados`);
-      }
-    });
+    let counterEl=null;
+    for(const node of nodes){
+      if(/SENAMHI:\s*\d+\s*(?:vigentes|actuales?)\s*[·•]\s*\d+\s*pasados?/i.test(node.nodeValue||'')){counterEl=node.parentElement;break;}
+    }
+    if(!counterEl)return;
+    const currentBox=d.getElementById('currentOfficialAlerts')||d.getElementById('currentAlerts')||d.getElementById('officialCurrentAlerts');
+    const pastBox=d.getElementById('pastOfficialAlerts')||d.getElementById('pastAlerts')||d.getElementById('officialPastAlerts');
+    const countVisible=box=>box?Array.from(box.children).filter(x=>x.textContent.trim()&&!/no hay|sin avisos|no se encontraron/i.test(x.textContent)).length:0;
+    let current=countVisible(currentBox),past=countVisible(pastBox);
+    const text=counterEl.textContent||'';
+    const m=text.match(/SENAMHI:\s*(\d+)\s*(?:vigentes|actuales?)\s*[·•]\s*(\d+)\s*pasados?/i);
+    if(!currentBox&&m)current=Number(m[1]);
+    if(!pastBox&&m)past=Number(m[2]);
+    counterEl.textContent=`SENAMHI: ${current} actuales · ${past} pasados`;
   }catch(e){console.warn('No se pudo actualizar el contador SENAMHI',e)}
 }
-frame.addEventListener('load',()=>{patch();setTimeout(patch,500);setTimeout(patch,1500);setInterval(patch,3000)});
+frame.addEventListener('load',()=>{patchCounter();setTimeout(patchCounter,500);setTimeout(patchCounter,1500);setInterval(patchCounter,3000)});
 </script>
 </body>
 </html>
