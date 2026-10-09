@@ -13,7 +13,8 @@ SENAMHI_SHORT_TERM_RAIN_URL = "https://www.senamhi.gob.pe/servicios/main.php?dp=
 MONTHS_ES = {"ene":1,"enero":1,"feb":2,"febrero":2,"mar":3,"marzo":3,"abr":4,"abril":4,"may":5,"mayo":5,"jun":6,"junio":6,"jul":7,"julio":7,"ago":8,"agosto":8,"sep":9,"sept":9,"septiembre":9,"oct":10,"octubre":10,"nov":11,"noviembre":11,"dic":12,"diciembre":12}
 
 # Respaldo histórico oficial: se mezcla con los datos obtenidos de SENAMHI
-# para que el dashboard siempre pueda mostrar avisos pasados.
+# para que el dashboard pueda mostrar avisos pasados aun cuando la web oficial
+# esté temporalmente lenta o no exponga su tabla con la misma estructura.
 HISTORICAL_OFFICIAL = [
     ("269", "INCREMENTO DE VIENTO EN LA SIERRA NORTE", "2026-07-07", "2026-07-09", "NARANJA"),
     ("268", "INCREMENTO DE TEMPERATURA DIURNA EN LA COSTA Y SIERRA (EXTENSIÓN DEL AVISO 266)", "2026-07-07", "2026-07-09", "NARANJA"),
@@ -142,8 +143,6 @@ def _parse_short_term_rain(html: str) -> list[dict]:
 
 def senamhi_alerts() -> dict:
     alerts, errors = [], []
-    # Consultar las dos fuentes en paralelo para que una fuente lenta de SENAMHI
-    # no deje al dashboard bloqueado durante decenas de segundos.
     sources = [
         ("national", SENAMHI_ALERTS_URL, _parse_national_tables),
         ("short_term_rain", SENAMHI_SHORT_TERM_RAIN_URL, _parse_short_term_rain),
@@ -175,20 +174,24 @@ def senamhi_alerts() -> dict:
     )
     past = [a for a in ordered if a.get("status") == "PASADO"]
     current = [a for a in ordered if a.get("status") == "ACTUAL"]
+    upcoming = [a for a in ordered if a.get("status") == "PROXIMO"]
 
-    # IMPORTANTE: el dashboard antiguo consume solamente `alerts` y luego
-    # separa actuales/pasados en el navegador. Si SENAMHI devuelve más de 50
-    # avisos recientes, un simple [:50] ocultaba todos los históricos. Reservamos
-    # siempre espacio para avisos pasados, evitando que aparezcan y desaparezcan.
-    non_past = [a for a in ordered if a.get("status") != "PASADO"]
-    display_alerts = (non_past[:40] + past[:10])[:50]
+    # `alerts` contiene suficientes registros para que el frontend pueda
+    # separar actuales y pasados sin perder el histórico por un límite inicial.
+    display_alerts = (current[:40] + upcoming[:10] + past[:50])[:100]
 
     return {
         "source":"SENAMHI",
         "source_url":SENAMHI_ALERTS_URL,
         "fetched_at":now_dt.isoformat(),
         "alerts":display_alerts,
-        "past_alerts":past[:50],
         "current_alerts":current[:50],
+        "past_alerts":past[:50],
+        "upcoming_alerts":upcoming[:20],
+        "current_count":len(current),
+        "past_count":len(past),
+        "upcoming_count":len(upcoming),
+        "total_count":len(ordered),
         "warnings":errors,
+        "note":"Los avisos se clasifican por fecha de inicio/fin. Los avisos históricos de respaldo se contabilizan como PASADO y no se presentan como vigentes.",
     }
