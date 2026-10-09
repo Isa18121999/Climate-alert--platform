@@ -1,0 +1,93 @@
+name: Stabilize dashboard display
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch dashboard display stability
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('dashboard/index.html')
+          text = path.read_text(encoding='utf-8')
+
+          # Cache-buster para que Render entregue el wrapper actualizado.
+          text = text.replace('index-original.html?v=20261009-news-images2', 'index-original.html?v=20261009-news-images3')
+
+          # No borrar las noticias visibles cuando una consulta temporal devuelve vacío.
+          text = text.replace(
+              "if(!valid.length){box.innerHTML='<div class=\"empty\">No se encontraron noticias climáticas relevantes de Perú.</div>';return}",
+              "if(!valid.length){return}"
+          )
+
+          # Si el backend de noticias falla momentáneamente, conservar las noticias que ya estaban visibles.
+          text = text.replace(
+              "}catch(e){console.warn('No se pudieron cargar las noticias con imágenes:',e);fixNews()}\n}",
+              "}catch(e){console.warn('No se pudieron cargar las noticias con imágenes:',e)}\n}",
+          )
+
+          # Nunca ocultar una imagen por un fallo puntual de red: usar un SVG local como respaldo.
+          text = text.replace(
+              "onerror=\"this.style.display=\\'none\\'\"",
+              "onerror=\"this.onerror=null;this.src='data:image/svg+xml;charset=UTF-8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22110%22 height=%2282%22 viewBox=%220 0 110 82%22%3E%3Crect width=%22110%22 height=%2282%22 rx=%2212%22 fill=%22%23dceff5%22/%3E%3Ccircle cx=%2235%22 cy=%2238%22 r=%2214%22 fill=%22%23ffffff%22/%3E%3Ccircle cx=%2253%22 cy=%2232%22 r=%2218%22 fill=%22%23ffffff%22/%3E%3Cpath d=%22M25 55c8-12 14-12 22 0 8-12 14-12 22 0%22 fill=%22none%22 stroke=%22%236aa9bd%22 stroke-width=%224%22 stroke-linecap=%22round%22/%3E%3C/svg%3E'\""
+          )
+
+          marker = "function fix(){patchNewsFetch();fixHistory();normalizeSeverity();moveCalculatedAlertsToCurrent();syncRecentMeasurements();enhanceLocationWeather()}"
+          if marker not in text:
+              raise SystemExit('No se encontró el punto de inserción del dashboard')
+
+          cloud = r'''
+let lastCloudMeasurementCheck=0;
+async function syncCloudMeasurements(){
+  const d=getDoc();if(!d)return;
+  const apiInput=d.getElementById('api');
+  const base=(apiInput&&apiInput.value?apiInput.value:'https://climate-alert-platform-api.onrender.com').replace(/\/$/,'');
+  if(!base||Date.now()-lastCloudMeasurementCheck<15000)return;
+  lastCloudMeasurementCheck=Date.now();
+  try{
+    const response=await fetch(base+'/measurements',{cache:'no-store'});
+    if(!response.ok)throw new Error('HTTP '+response.status);
+    const data=await response.json();
+    const items=Array.isArray(data.items)?data.items:[];
+    const status=d.getElementById('measurements'),rows=d.getElementById('rows');
+    if(!status||!rows)return;
+    // No limpiar el historial visible si una consulta temporal devuelve cero registros.
+    if(!items.length){if(!rows.children.length)status.textContent='Aún no hay mediciones registradas.';return}
+    status.textContent=items.length+' mediciones registradas.';
+    rows.innerHTML=items.slice(0,10).map(item=>{
+      const risk=String(item.risk_level||'—').toUpperCase();
+      const cls=risk==='CRITICO'?'critical':risk==='ALTO'?'high':risk==='MEDIO'?'medium':'low';
+      return '<tr><td>'+(item.station_id||'—')+'</td><td>'+((item.rain_mm_h??'—'))+'</td><td>'+((item.river_level_m??'—'))+'</td><td><span class="badge '+cls+'">'+risk+'</span></td></tr>';
+    }).join('');
+  }catch(e){
+    // Mantener en pantalla los datos ya cargados ante una caída temporal del backend.
+    console.warn('No se pudieron actualizar las mediciones de la nube:',e);
+  }
+}
+'''
+          text = text.replace(marker, cloud + marker.replace('enhanceLocationWeather()', 'syncCloudMeasurements();enhanceLocationWeather()'))
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Commit patched dashboard and remove temporary workflow
+        run: |
+          rm -f .github/workflows/stabilize-dashboard.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dashboard/index.html .github/workflows/stabilize-dashboard.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "Stabilize news images and cloud measurements"
+          git push
