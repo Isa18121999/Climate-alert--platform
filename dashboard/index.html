@@ -12,7 +12,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#eef5f8}ifr
 </style>
 </head>
 <body>
-<iframe id="app" src="index-original.html?v=20261009-news-images1" title="Climate Alert Platform"></iframe>
+<iframe id="app" src="index-original.html?v=20261009-news-images2" title="Climate Alert Platform"></iframe>
 <script>
 const HIST=[
 ['269','INCREMENTO DE VIENTO EN LA SIERRA NORTE','2026-07-07','2026-07-09','NARANJA'],
@@ -128,6 +128,7 @@ function newsSeverity(article){
   if(s==='MEDIA')return ['MODERADA','warn'];
   return ['BAJA','ok'];
 }
+let lastNewsSignature='';
 async function renderNewsWithImages(){
   const d=getDoc();if(!d)return;
   const box=d.getElementById('news');if(!box)return;
@@ -141,6 +142,9 @@ async function renderNewsWithImages(){
     const generic=/(pol[ií]tica|elecciones|congreso|partido pol[ií]tico|deportes|entretenimiento|hor[oó]scopo|rusia|informativa)/i;
     const valid=articles.filter(a=>climate.test((a.title||'')+' '+(a.description||''))&&!generic.test((a.title||'')+' '+(a.description||''))).slice(0,12);
     if(!valid.length){box.innerHTML='<div class="empty">No se encontraron noticias climáticas relevantes de Perú.</div>';return}
+    const signature=valid.map(a=>String(a.url||a.title||'')).join('|');
+    if(signature===lastNewsSignature && box.querySelector('.climate-news-image')){const count=d.getElementById('newsCount');if(count)count.textContent=String(valid.length);return}
+    lastNewsSignature=signature;
     box.innerHTML=valid.map(a=>{const [level,cls]=newsSeverity(a);const img=newsImage(a);const date=a.published_at||a.seendate||'';const when=date?new Date(date).toLocaleDateString('es-PE',{day:'2-digit',month:'2-digit',year:'numeric'}):'';return '<article class="news-item climate-news-image" style="display:grid;grid-template-columns:110px 1fr;gap:12px;align-items:start"><img src="'+img+'" alt="Imagen relacionada con '+(a.title||'noticia climática de Perú').replace(/"/g,'&quot;')+'" loading="lazy" referrerpolicy="no-referrer" style="width:110px;height:82px;object-fit:cover;border-radius:12px;border:1px solid var(--line);background:#eef5f8" onerror="this.style.display=\'none\'"/><div class="news-body"><div><span class="news-level '+cls+'">'+level+'</span></div><a href="'+(a.url||'#')+'" target="_blank" rel="noopener">'+(a.title||'Noticia climática')+'</a><div class="news-source">'+(a.source||a.domain||'Fuente peruana')+(when?' · '+when:'')+'</div><div class="news-source">'+(a.description||'').slice(0,180)+'</div></div></article>'}).join('');
     const count=d.getElementById('newsCount');if(count)count.textContent=String(valid.length);
   }catch(e){console.warn('No se pudieron cargar las noticias con imágenes:',e);fixNews()}
