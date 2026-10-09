@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import json
 import os
 import re
@@ -72,12 +73,22 @@ def _clean_text(value: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", value or "")).strip()
 
 
+def _rss_image(item: ET.Element, description: str = "") -> str | None:
+    """Extract an RSS image without trusting arbitrary HTML as the image itself."""
+    for child in item.iter():
+        tag = child.tag.split("}")[-1].lower() if isinstance(child.tag, str) else ""
+        if tag in {"content", "thumbnail", "image", "enclosure"}:
+            url = (child.attrib.get("url") or child.attrib.get("href") or "").strip()
+            if url.startswith(("https://", "http://")):
+                return html.unescape(url)
+    match = re.search(r'<img[^>]+src=["\'](https?://[^"\']+)["\']', description or "", re.I)
+    return html.unescape(match.group(1)) if match else None
+
+
 def _is_climate_item(title: str, description: str = "", category: str = "", source: str = "", url: str = "") -> bool:
     text = f"{title} {description} {category}".lower()
     if not any(term in text for term in PERU_CLIMATE_TERMS):
         return False
-    # A trusted Peruvian media/SENAMHI source is enough to establish Peru;
-    # many valid headlines omit the word "Perú" while naming a local event.
     trusted_source = _allowed_peru_source(url, source) or "senamhi" in source.lower()
     peru_signal = any(term in text for term in PERU_SIGNALS) or trusted_source
     if not peru_signal:
@@ -112,7 +123,8 @@ def _peruvian_climate_rss(query: str) -> dict:
             for item in root.findall(".//item"):
                 title = _clean_text(item.findtext("title") or "")
                 link = (item.findtext("link") or "").strip()
-                description = _clean_text(item.findtext("description") or "")
+                description_raw = item.findtext("description") or ""
+                description = _clean_text(description_raw)
                 pub_date = item.findtext("pubDate")
                 category = " ".join(x.text or "" for x in item.findall("category"))
                 if not title or not link or not _is_climate_item(title, description, category, source_label, link):
@@ -127,7 +139,9 @@ def _peruvian_climate_rss(query: str) -> dict:
                     "title": title, "url": link, "domain": source_label, "source": source_label,
                     "language": "es", "seendate": pub_date, "published_at": pub_date,
                     "description": description, "summary": description,
-                    "socialimage": None, "country": "PE", "region": "Perú",
+                    "socialimage": _rss_image(item, description_raw),
+                    "image_url": _rss_image(item, description_raw),
+                    "country": "PE", "region": "Perú",
                     "category": category or "Clima", "severity": _significance(title, description),
                 })
                 if len(articles) >= 20:
