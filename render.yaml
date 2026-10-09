@@ -8,6 +8,11 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app
     autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: climate-alert-platform-db
+          property: connectionString
 
   - type: cron
     name: climate-alert-platform-monitor
@@ -21,3 +26,10 @@ services:
     envVars:
       - key: API_URL
         value: https://climate-alert-platform-api.onrender.com
+
+  - type: pserv
+    name: climate-alert-platform-db
+    plan: free
+    runtime: postgres
+    region: oregon
+    postgresMajorVersion: '18'

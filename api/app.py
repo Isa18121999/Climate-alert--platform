@@ -7,6 +7,8 @@ from uuid import uuid4
 from urllib.parse import urlparse, urljoin
 
 import requests
+import psycopg2
+import psycopg2.extras
 import xml.etree.ElementTree as ET
 from bs4 import BeautifulSoup
 from flask import Flask, jsonify, request
@@ -23,6 +25,79 @@ OPEN_METEO_FLOOD = os.getenv("OPEN_METEO_FLOOD", "https://flood-api.open-meteo.c
 DEFAULT_LAT = float(os.getenv("DEFAULT_LAT", "-5.1945"))
 DEFAULT_LON = float(os.getenv("DEFAULT_LON", "-80.6328"))
 DEFAULT_STATION_ID = os.getenv("DEFAULT_STATION_ID", "PIURA-DEMO")
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+
+def _db_connect():
+    if not DATABASE_URL:
+        return None
+    return psycopg2.connect(DATABASE_URL, connect_timeout=5)
+
+
+def _init_measurements_db():
+    conn = _db_connect()
+    if conn is None:
+        return
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS measurements (
+                        id TEXT PRIMARY KEY,
+                        station_id TEXT NOT NULL,
+                        timestamp TEXT NOT NULL,
+                        rain_mm_h DOUBLE PRECISION NOT NULL,
+                        river_level_m DOUBLE PRECISION NOT NULL,
+                        risk_level TEXT NOT NULL,
+                        risk_reasons JSONB NOT NULL,
+                        location JSONB NOT NULL
+                    )
+                """)
+    finally:
+        conn.close()
+
+
+def _store_measurement(item: dict):
+    conn = _db_connect()
+    if conn is None:
+        measurements.insert(0, item)
+        return
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO measurements
+                    (id, station_id, timestamp, rain_mm_h, river_level_m, risk_level, risk_reasons, location)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (id) DO NOTHING""",
+                    (
+                        item["id"], item["station_id"], item["timestamp"],
+                        item["rain_mm_h"], item["river_level_m"], item["risk_level"],
+                        psycopg2.extras.Json(item["risk_reasons"]),
+                        psycopg2.extras.Json(item["location"]),
+                    ),
+                )
+    finally:
+        conn.close()
+
+
+def _load_measurements(limit: int = 50) -> list[dict]:
+    conn = _db_connect()
+    if conn is None:
+        return measurements[:limit]
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """SELECT id, station_id, timestamp, rain_mm_h, river_level_m, risk_level, risk_reasons, location
+                   FROM measurements ORDER BY timestamp DESC LIMIT %s""",
+                (limit,),
+            )
+            rows = cur.fetchall()
+            return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
 
 measurements: list[dict] = []
 alerts: list[dict] = []
@@ -311,7 +386,10 @@ def create_measurement():
 
 
 @app.get("/measurements")
-def list_measurements(): return jsonify({"items": measurements[:50]})
+def list_measurements(): return jsonify({"items": _load_measurements(50)})
+
+
+_init_measurements_db()
 
 
 @app.get("/alerts")
