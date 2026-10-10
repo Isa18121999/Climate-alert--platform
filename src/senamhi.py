@@ -8,7 +8,10 @@ from typing import Any
 import requests
 from bs4 import BeautifulSoup
 
-SENAMHI_ALERTS_URL = "https://web2.senamhi.gob.pe/?p=avisos"
+# SENAMHI actualiza sus avisos en la sección de Avisos Meteorológicos.
+# Se usa la página nacional disponible desde el portal de SENAMHI,
+# no una lista escrita manualmente en el código.
+SENAMHI_ALERTS_URL = "https://www.senamhi.gob.pe/main.php?dp=lima&p=avisos-meteorologicos"
 SENAMHI_SHORT_TERM_RAIN_URL = "https://www.senamhi.gob.pe/servicios/main.php?dp=lima&p=aviso-24H"
 MONTHS_ES = {"ene":1,"enero":1,"feb":2,"febrero":2,"mar":3,"marzo":3,"abr":4,"abril":4,"may":5,"mayo":5,"jun":6,"junio":6,"jul":7,"julio":7,"ago":8,"agosto":8,"sep":9,"sept":9,"septiembre":9,"oct":10,"octubre":10,"nov":11,"noviembre":11,"dic":12,"diciembre":12}
 
@@ -50,7 +53,7 @@ def _status(alert: dict[str, Any], now: datetime) -> str:
 
 
 def _get_html(url: str) -> str:
-    response = requests.get(url, timeout=5, headers={"User-Agent": "ClimateAlertPlatform/1.0 (+academic-project)"})
+    response = requests.get(url, timeout=10, headers={"User-Agent": "ClimateAlertPlatform/1.0 (+academic-project)"})
     response.raise_for_status()
     response.encoding = response.apparent_encoding or response.encoding
     return response.text
