@@ -142,19 +142,66 @@ def _is_climate_article(title: str, description: str = "", category: str = "") -
 
 
 def _rss_image(item: ET.Element, description: str = "") -> str | None:
-    """Extract the real image URL from RSS/Media RSS, with HTML fallback."""
+    """Extract a real news image from RSS/Media RSS and HTML descriptions."""
+    candidates = []
     for child in item.iter():
         tag = child.tag.split("}")[-1].lower() if isinstance(child.tag, str) else ""
-        if tag in {"content", "thumbnail", "image", "enclosure"}:
-            url = (child.attrib.get("url") or child.attrib.get("href") or "").strip()
-            if url.startswith(("https://", "http://")):
-                return url
+        if tag not in {"content", "thumbnail", "image", "enclosure"}:
+            continue
+        attrs = child.attrib or {}
+        for key in ("url", "href", "src", "resource", "about"):
+            value = str(attrs.get(key) or "").strip()
+            if value:
+                candidates.append(value)
+        text = (child.text or "").strip()
+        if text:
+            candidates.append(text)
+
     if description:
-        img = BeautifulSoup(description, "html.parser").find("img", src=True)
-        if img:
-            url = str(img.get("src") or "").strip()
-            if url.startswith(("https://", "http://")):
-                return url
+        soup = BeautifulSoup(description, "html.parser")
+        for img in soup.find_all("img"):
+            for key in ("src", "data-src", "data-original", "data-lazy-src"):
+                value = str(img.get(key) or "").strip()
+                if value:
+                    candidates.append(value)
+            srcset = str(img.get("srcset") or "").strip()
+            if srcset:
+                candidates.append(srcset.split(",")[0].strip().split(" ")[0])
+
+    for value in candidates:
+        if value.startswith(("https://", "http://")):
+            return value
+    return None
+
+
+def _article_page_image(article_url: str) -> str | None:
+    """Fallback: obtain the article's actual Open Graph/Twitter image."""
+    try:
+        response = requests.get(
+            article_url,
+            timeout=5,
+            headers={
+                "User-Agent": "Mozilla/5.0 (compatible; ClimateAlertPlatform/1.0)",
+                "Accept-Language": "es-PE,es;q=0.9",
+            },
+        )
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+        for attrs in (
+            {"property": "og:image"},
+            {"property": "og:image:url"},
+            {"name": "twitter:image"},
+            {"name": "twitter:image:src"},
+        ):
+            meta = soup.find("meta", attrs=attrs)
+            value = str(meta.get("content") or "").strip() if meta else ""
+            if value:
+                return urljoin(article_url, value)
+        link = soup.find("link", rel=lambda value: value and "image_src" in value)
+        if link and link.get("href"):
+            return urljoin(article_url, str(link.get("href")).strip())
+    except Exception as exc:
+        print(f"NEWS IMAGE {article_url}: {exc}")
     return None
 
 
@@ -189,6 +236,8 @@ def _add_article(articles: list[dict], seen: set[str], title: str, link: str, so
     severity = _news_severity(title, description)
     if severity == "INFORMATIVA":
         return
+    if not image_url:
+        image_url = _article_page_image(link)
     key = link.lower().split("#", 1)[0]
     if key in seen:
         return
