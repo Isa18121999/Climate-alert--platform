@@ -10,17 +10,96 @@
 <style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#eef5f8}iframe{display:block;width:100%;height:100%;border:0}</style>
 </head>
 <body>
-<iframe id="dashboardFrame" src="index-original.html?v=20261009-senamhi-counter6" title="Climate Alert Platform"></iframe>
+<iframe id="dashboardFrame" src="index-original.html?v=20261009-stable1" title="Climate Alert Platform"></iframe>
 <script>
+/*
+  Capa de estabilidad del dashboard.
+  El contenido real sigue en index-original.html; este wrapper evita que una
+  respuesta temporalmente vacía del backend borre datos que ya estaban visibles.
+*/
 const frame=document.getElementById('dashboardFrame');
+let cachedMeasurements='';
+let cachedMeasurementStatus='';
+let cachedNews='';
+let cachedNewsStatus='';
+let cachedCurrentAlerts='';
+let cachedPastAlerts='';
+let cachedAlertsStatus='';
+let lastCloudSync=0;
+
+function doc(){try{return frame.contentDocument||frame.contentWindow.document}catch(e){return null}}
+function nonEmptyChildren(el){return el&&Array.from(el.children).some(x=>(x.textContent||'').trim()&&!/no hay|sin avisos|aún no hay|conecta la api/i.test(x.textContent||''))}
+
+function stabilizeVisibleContent(){
+  try{
+    const d=doc();if(!d||!d.body)return;
+
+    const rows=d.getElementById('rows');
+    const measurementStatus=d.getElementById('measurements');
+    if(rows&&nonEmptyChildren(rows)){
+      cachedMeasurements=rows.innerHTML;
+      if(measurementStatus)cachedMeasurementStatus=measurementStatus.textContent;
+    }else if(rows&&cachedMeasurements){
+      rows.innerHTML=cachedMeasurements;
+      if(measurementStatus&&cachedMeasurementStatus)measurementStatus.textContent=cachedMeasurementStatus;
+    }
+
+    const news=d.getElementById('news');
+    const newsStatus=d.getElementById('newsStatus');
+    if(news&&news.querySelector('.news-item')){
+      cachedNews=news.innerHTML;
+      if(newsStatus)cachedNewsStatus=newsStatus.textContent;
+    }else if(news&&cachedNews){
+      news.innerHTML=cachedNews;
+      if(newsStatus&&cachedNewsStatus)newsStatus.textContent=cachedNewsStatus;
+    }
+
+    const current=d.getElementById('currentOfficialAlerts')||d.getElementById('currentAlerts')||d.getElementById('officialCurrentAlerts');
+    const past=d.getElementById('pastOfficialAlerts')||d.getElementById('pastAlerts')||d.getElementById('officialPastAlerts');
+    const alertStatus=d.getElementById('alertsStatus');
+    if(current&&nonEmptyChildren(current))cachedCurrentAlerts=current.innerHTML;
+    else if(current&&cachedCurrentAlerts)current.innerHTML=cachedCurrentAlerts;
+    if(past&&nonEmptyChildren(past))cachedPastAlerts=past.innerHTML;
+    else if(past&&cachedPastAlerts)past.innerHTML=cachedPastAlerts;
+    if(alertStatus&&/consultando|cargando/i.test(alertStatus.textContent||'')&&cachedAlertsStatus)alertStatus.textContent=cachedAlertsStatus;
+    else if(alertStatus&&(cachedCurrentAlerts||cachedPastAlerts))cachedAlertsStatus=alertStatus.textContent;
+  }catch(e){console.warn('Estabilidad del dashboard:',e)}
+}
+
+async function syncCloudMeasurements(){
+  if(Date.now()-lastCloudSync<15000)return;
+  lastCloudSync=Date.now();
+  try{
+    const r=await fetch('https://climate-alert-platform-api.onrender.com/measurements',{cache:'no-store'});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const data=await r.json();
+    const items=Array.isArray(data.items)?data.items:[];
+    if(!items.length)return;
+    const d=doc();if(!d)return;
+    const rows=d.getElementById('rows');
+    const status=d.getElementById('measurements');
+    if(!rows||!status)return;
+    rows.innerHTML=items.slice(0,10).map(x=>{
+      const risk=String(x.risk_level||'—').toUpperCase();
+      const cls=risk==='CRITICO'?'critical':risk==='ALTO'?'high':risk==='MEDIO'?'medium':'low';
+      return '<tr><td>'+(x.station_id||'—')+'</td><td>'+((x.rain_mm_h??'—'))+'</td><td>'+((x.river_level_m??'—'))+'</td><td><span class="badge '+cls+'">'+risk+'</span></td></tr>';
+    }).join('');
+    status.textContent=items.length+' mediciones registradas.';
+    cachedMeasurements=rows.innerHTML;
+    cachedMeasurementStatus=status.textContent;
+  }catch(e){
+    console.warn('No se pudieron recuperar las mediciones de la nube:',e);
+  }
+}
+
 function patchCounter(){
   try{
-    const d=frame.contentDocument;if(!d||!d.body)return;
+    const d=doc();if(!d||!d.body)return;
     const walker=d.createTreeWalker(d.body,NodeFilter.SHOW_TEXT);
     const nodes=[];let n;while(n=walker.nextNode())nodes.push(n);
     let counterEl=null;
     for(const node of nodes){
-      if(/SENAMHI:\s*\d+\s*(?:vigentes|actuales?)\s*[·•]\s*\d+\s*pasados?/i.test(node.nodeValue||'')){counterEl=node.parentElement;break;}
+      if(/SENAMHI:\s*\d+\s*(?:vigentes|actuales?)\s*[·•]\s*\d+\s*pasados?/i.test(node.nodeValue||'')){counterEl=node.parentElement;break}
     }
     if(!counterEl)return;
     const currentBox=d.getElementById('currentOfficialAlerts')||d.getElementById('currentAlerts')||d.getElementById('officialCurrentAlerts');
@@ -34,20 +113,26 @@ function patchCounter(){
     counterEl.textContent=`SENAMHI: ${current} actuales · ${past} pasados`;
   }catch(e){console.warn('No se pudo actualizar el contador SENAMHI',e)}
 }
+
 function patchSeverityLabels(){
   try{
-    const d=frame.contentDocument;if(!d||!d.body)return;
+    const d=doc();if(!d||!d.body)return;
     d.querySelectorAll('.badge').forEach(b=>{
       if(!/^HIST[ÓO]RICO$/i.test((b.textContent||'').trim()))return;
-      const card=b.closest('.alert-card');
-      if(!card)return;
+      const card=b.closest('.alert-card');if(!card)return;
       const cls=card.classList;
       b.textContent=cls.contains('critical')?'ROJO':cls.contains('high')?'NARANJA':cls.contains('medium')?'AMARILLO':(b.textContent||'').trim();
     });
   }catch(e){console.warn('No se pudo actualizar la gravedad SENAMHI',e)}
 }
-function patchDashboard(){patchCounter();patchSeverityLabels()}
-frame.addEventListener('load',()=>{patchDashboard();setTimeout(patchDashboard,500);setTimeout(patchDashboard,1500);setInterval(patchDashboard,3000)});
+
+function tick(){stabilizeVisibleContent();patchCounter();patchSeverityLabels();syncCloudMeasurements()}
+frame.addEventListener('load',()=>{
+  tick();
+  setTimeout(tick,500);
+  setTimeout(tick,1500);
+  setInterval(tick,3000);
+});
 </script>
 </body>
 </html>
