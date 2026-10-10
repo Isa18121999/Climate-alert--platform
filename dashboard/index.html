@@ -10,12 +10,13 @@
 <style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#eef5f8}iframe{display:block;width:100%;height:100%;border:0}</style>
 </head>
 <body>
-<iframe id="dashboardFrame" src="index-original.html?v=20261009-stable1" title="Climate Alert Platform"></iframe>
+<iframe id="dashboardFrame" src="index-original.html?v=20261010-stable2" title="Climate Alert Platform"></iframe>
 <script>
 /*
   Capa de estabilidad del dashboard.
-  El contenido real sigue en index-original.html; este wrapper evita que una
-  respuesta temporalmente vacía del backend borre datos que ya estaban visibles.
+  El contenido real sigue en index-original.html; esta capa conserva en pantalla
+  los datos que ya llegaron correctamente y evita que una respuesta temporalmente
+  vacía del backend borre información válida.
 */
 const frame=document.getElementById('dashboardFrame');
 let cachedMeasurements='';
@@ -24,11 +25,16 @@ let cachedNews='';
 let cachedNewsStatus='';
 let cachedCurrentAlerts='';
 let cachedPastAlerts='';
+let cachedSystemAlerts='';
 let cachedAlertsStatus='';
 let lastCloudSync=0;
 
 function doc(){try{return frame.contentDocument||frame.contentWindow.document}catch(e){return null}}
-function nonEmptyChildren(el){return el&&Array.from(el.children).some(x=>(x.textContent||'').trim()&&!/no hay|sin avisos|aún no hay|conecta la api/i.test(x.textContent||''))}
+function usefulText(text){return text&&!/no hay|sin avisos|aún no hay|conecta la api|no se pudieron cargar|no se pudieron consultar/i.test(text)}
+function nonEmptyChildren(el){return el&&Array.from(el.children).some(x=>usefulText((x.textContent||'').trim()))}
+
+function saveLocal(key,value){try{if(value)localStorage.setItem(key,value)}catch(e){}}
+function loadLocal(key){try{return localStorage.getItem(key)||''}catch(e){return ''}}
 
 function stabilizeVisibleContent(){
   try{
@@ -38,9 +44,13 @@ function stabilizeVisibleContent(){
     const measurementStatus=d.getElementById('measurements');
     if(rows&&nonEmptyChildren(rows)){
       cachedMeasurements=rows.innerHTML;
-      if(measurementStatus)cachedMeasurementStatus=measurementStatus.textContent;
-    }else if(rows&&cachedMeasurements){
-      rows.innerHTML=cachedMeasurements;
+      if(measurementStatus&&usefulText(measurementStatus.textContent||''))cachedMeasurementStatus=measurementStatus.textContent;
+      saveLocal('cap_measurements_html',cachedMeasurements);
+      saveLocal('cap_measurements_status',cachedMeasurementStatus);
+    }else if(rows){
+      if(!cachedMeasurements)cachedMeasurements=loadLocal('cap_measurements_html');
+      if(!cachedMeasurementStatus)cachedMeasurementStatus=loadLocal('cap_measurements_status');
+      if(cachedMeasurements)rows.innerHTML=cachedMeasurements;
       if(measurementStatus&&cachedMeasurementStatus)measurementStatus.textContent=cachedMeasurementStatus;
     }
 
@@ -48,21 +58,37 @@ function stabilizeVisibleContent(){
     const newsStatus=d.getElementById('newsStatus');
     if(news&&news.querySelector('.news-item')){
       cachedNews=news.innerHTML;
-      if(newsStatus)cachedNewsStatus=newsStatus.textContent;
-    }else if(news&&cachedNews){
-      news.innerHTML=cachedNews;
+      if(newsStatus&&usefulText(newsStatus.textContent||''))cachedNewsStatus=newsStatus.textContent;
+      saveLocal('cap_news_html',cachedNews);
+      saveLocal('cap_news_status',cachedNewsStatus);
+    }else if(news){
+      if(!cachedNews)cachedNews=loadLocal('cap_news_html');
+      if(!cachedNewsStatus)cachedNewsStatus=loadLocal('cap_news_status');
+      if(cachedNews)news.innerHTML=cachedNews;
       if(newsStatus&&cachedNewsStatus)newsStatus.textContent=cachedNewsStatus;
     }
 
-    const current=d.getElementById('currentOfficialAlerts')||d.getElementById('currentAlerts')||d.getElementById('officialCurrentAlerts');
-    const past=d.getElementById('pastOfficialAlerts')||d.getElementById('pastAlerts')||d.getElementById('officialPastAlerts');
+    const current=d.getElementById('officialAlerts');
+    const past=d.getElementById('pastOfficialAlerts');
+    const system=d.getElementById('systemAlerts');
     const alertStatus=d.getElementById('alertsStatus');
-    if(current&&nonEmptyChildren(current))cachedCurrentAlerts=current.innerHTML;
-    else if(current&&cachedCurrentAlerts)current.innerHTML=cachedCurrentAlerts;
-    if(past&&nonEmptyChildren(past))cachedPastAlerts=past.innerHTML;
-    else if(past&&cachedPastAlerts)past.innerHTML=cachedPastAlerts;
-    if(alertStatus&&/consultando|cargando/i.test(alertStatus.textContent||'')&&cachedAlertsStatus)alertStatus.textContent=cachedAlertsStatus;
-    else if(alertStatus&&(cachedCurrentAlerts||cachedPastAlerts))cachedAlertsStatus=alertStatus.textContent;
+
+    if(current&&nonEmptyChildren(current)){cachedCurrentAlerts=current.innerHTML;saveLocal('cap_current_alerts',cachedCurrentAlerts)}
+    else if(current){if(!cachedCurrentAlerts)cachedCurrentAlerts=loadLocal('cap_current_alerts');if(cachedCurrentAlerts)current.innerHTML=cachedCurrentAlerts}
+
+    if(past&&nonEmptyChildren(past)){cachedPastAlerts=past.innerHTML;saveLocal('cap_past_alerts',cachedPastAlerts)}
+    else if(past){if(!cachedPastAlerts)cachedPastAlerts=loadLocal('cap_past_alerts');if(cachedPastAlerts)past.innerHTML=cachedPastAlerts}
+
+    if(system&&nonEmptyChildren(system)){cachedSystemAlerts=system.innerHTML;saveLocal('cap_system_alerts',cachedSystemAlerts)}
+    else if(system){if(!cachedSystemAlerts)cachedSystemAlerts=loadLocal('cap_system_alerts');if(cachedSystemAlerts)system.innerHTML=cachedSystemAlerts}
+
+    if(alertStatus&&usefulText(alertStatus.textContent||'')){
+      cachedAlertsStatus=alertStatus.textContent;
+      saveLocal('cap_alerts_status',cachedAlertsStatus);
+    }else if(alertStatus){
+      if(!cachedAlertsStatus)cachedAlertsStatus=loadLocal('cap_alerts_status');
+      if(cachedAlertsStatus)alertStatus.textContent=cachedAlertsStatus;
+    }
   }catch(e){console.warn('Estabilidad del dashboard:',e)}
 }
 
@@ -74,6 +100,7 @@ async function syncCloudMeasurements(){
     if(!r.ok)throw new Error('HTTP '+r.status);
     const data=await r.json();
     const items=Array.isArray(data.items)?data.items:[];
+    // Nunca reemplazar datos visibles por una respuesta vacía.
     if(!items.length)return;
     const d=doc();if(!d)return;
     const rows=d.getElementById('rows');
@@ -87,6 +114,8 @@ async function syncCloudMeasurements(){
     status.textContent=items.length+' mediciones registradas.';
     cachedMeasurements=rows.innerHTML;
     cachedMeasurementStatus=status.textContent;
+    saveLocal('cap_measurements_html',cachedMeasurements);
+    saveLocal('cap_measurements_status',cachedMeasurementStatus);
   }catch(e){
     console.warn('No se pudieron recuperar las mediciones de la nube:',e);
   }
@@ -102,15 +131,10 @@ function patchCounter(){
       if(/SENAMHI:\s*\d+\s*(?:vigentes|actuales?)\s*[·•]\s*\d+\s*pasados?/i.test(node.nodeValue||'')){counterEl=node.parentElement;break}
     }
     if(!counterEl)return;
-    const currentBox=d.getElementById('currentOfficialAlerts')||d.getElementById('currentAlerts')||d.getElementById('officialCurrentAlerts');
-    const pastBox=d.getElementById('pastOfficialAlerts')||d.getElementById('pastAlerts')||d.getElementById('officialPastAlerts');
-    const countVisible=box=>box?Array.from(box.children).filter(x=>x.textContent.trim()&&!/no hay|sin avisos|no se encontraron/i.test(x.textContent)).length:0;
-    let current=countVisible(currentBox),past=countVisible(pastBox);
-    const text=counterEl.textContent||'';
-    const m=text.match(/SENAMHI:\s*(\d+)\s*(?:vigentes|actuales?)\s*[·•]\s*(\d+)\s*pasados?/i);
-    if(!currentBox&&m)current=Number(m[1]);
-    if(!pastBox&&m)past=Number(m[2]);
-    counterEl.textContent=`SENAMHI: ${current} actuales · ${past} pasados`;
+    const currentBox=d.getElementById('officialAlerts');
+    const pastBox=d.getElementById('pastOfficialAlerts');
+    const countVisible=box=>box?Array.from(box.children).filter(x=>usefulText((x.textContent||'').trim())).length:0;
+    counterEl.textContent=`SENAMHI: ${countVisible(currentBox)} actuales · ${countVisible(pastBox)} pasados`;
   }catch(e){console.warn('No se pudo actualizar el contador SENAMHI',e)}
 }
 
@@ -127,11 +151,20 @@ function patchSeverityLabels(){
 }
 
 function tick(){stabilizeVisibleContent();patchCounter();patchSeverityLabels();syncCloudMeasurements()}
+
 frame.addEventListener('load',()=>{
   tick();
-  setTimeout(tick,500);
-  setTimeout(tick,1500);
+  setTimeout(tick,300);
+  setTimeout(tick,1000);
+  setTimeout(tick,2500);
   setInterval(tick,3000);
+  try{
+    const d=doc();
+    if(d&&d.body){
+      const observer=new MutationObserver(()=>stabilizeVisibleContent());
+      observer.observe(d.body,{childList:true,subtree:true});
+    }
+  }catch(e){console.warn('No se pudo activar el observador de estabilidad:',e)}
 });
 </script>
 </body>
