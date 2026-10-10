@@ -10,10 +10,10 @@
 <style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#eef5f8}iframe{display:block;width:100%;height:100%;border:0}</style>
 </head>
 <body>
-<iframe id="dashboardFrame" src="index-original.html?v=20261010-images047" title="Climate Alert Platform"></iframe>
+<iframe id="dashboardFrame" src="index-original.html?v=20261010-fix-news-alerts" title="Climate Alert Platform"></iframe>
 <script>
-/* Capa de estabilidad y presentación: conserva datos válidos y restaura las imágenes
-   reales entregadas por el backend de noticias, sin reemplazarlas por imágenes genéricas. */
+/* Capa de estabilidad: conserva datos válidos, restaura imágenes reales cuando el backend las entrega
+   y corrige el renderizado cuando las fuentes externas responden pero el filtro del frontend descarta datos. */
 const frame=document.getElementById('dashboardFrame');
 let cachedMeasurements='',cachedMeasurementStatus='',cachedNews='',cachedNewsStatus='',cachedCurrentAlerts='',cachedPastAlerts='',cachedSystemAlerts='',cachedAlertsStatus='';
 let newsImageMap=new Map();
@@ -22,6 +22,10 @@ function usefulText(text){return text&&!/no hay|sin avisos|aún no hay|conecta l
 function nonEmptyChildren(el){return el&&Array.from(el.children).some(x=>usefulText((x.textContent||'').trim()))}
 function saveLocal(k,v){try{if(v)localStorage.setItem(k,v)}catch(e){}}
 function loadLocal(k){try{return localStorage.getItem(k)||''}catch(e){return ''}}
+function esc(v){return String(v??'').replace(/[&<>\"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','\\':'&#92;','"':'&quot;'}[m]))}
+function severityClass(v){const s=String(v||'').toUpperCase();if(s.includes('CRIT'))return'critical';if(s.includes('ALTA')||s.includes('NARANJA'))return'high';if(s.includes('MEDIA')||s.includes('AMARILLO'))return'medium';if(s.includes('ROJO'))return'critical';return'info'}
+function severityLabel(v){const s=String(v||'').toUpperCase();if(s.includes('ROJO'))return'ROJO';if(s.includes('NARANJA')||s.includes('ALTA'))return'NARANJA';if(s.includes('AMARILLO')||s.includes('MEDIA'))return'AMARILLO';if(s.includes('CRIT'))return'ROJO';return s||'AMARILLO'}
+function alertDateText(a){const start=a.start_at||a.start_date||a.start||a.date_start||'';const end=a.end_at||a.end_date||a.end||a.date_end||'';if(start&&end)return`${start} · ${end}`;return start||end||a.date||''}
 
 async function loadNewsImages(){
  try{
@@ -29,7 +33,7 @@ async function loadNewsImages(){
   const api=d.getElementById('api');
   const base=(api&&api.value?api.value:'').replace(/\/$/,'');
   if(!base)return;
-  const response=await fetch(base+'/news?query=Perú%20alerta%20climática',{cache:'no-store'});
+  const response=await fetch(base+'/news?q=Perú%20alerta%20climática%20lluvias%20inundaciones%20desbordes%20huaicos%20SENAMHI',{cache:'no-store'});
   if(!response.ok)return;
   const data=await response.json();
   const articles=Array.isArray(data.articles)?data.articles:[];
@@ -61,11 +65,70 @@ function patchVisuals(){
    }
    const link=item.querySelector('a');
    const title=((link&&link.textContent)||'').trim().toLowerCase();
-   const article=newsImageMap.get(title);
-   const imageUrl=article||'';
+   const imageUrl=newsImageMap.get(title)||'';
    if(imageUrl && img.src!==imageUrl)img.src=imageUrl;
   });
  }catch(e){console.warn('Corrección visual:',e)}
+}
+
+function renderNewsDirect(articles){
+ try{
+  const d=doc();const list=d&&d.getElementById('news');if(!list)return;
+  const clean=(Array.isArray(articles)?articles:[]).filter(a=>a&&a.title&&a.url);
+  if(!clean.length)return false;
+  list.innerHTML=clean.slice(0,20).map(a=>{
+   const sev=severityLabel(a.severity||a.level);const cls=severityClass(a.severity||a.level);
+   const source=esc(a.source||a.domain||'Fuente peruana');
+   const desc=esc(a.description||a.summary||'');
+   const date=esc(a.published_at||a.seendate||'');
+   return `<article class="news-item"><div class="news-body"><div><span class="news-level ${cls}">${sev}</span></div><a href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">${esc(a.title)}</a>${desc?`<div class="news-source">${desc.slice(0,220)}</div>`:''}<div class="news-source">${source}${date?' · '+date:''}</div></div></article>`;
+  }).join('');
+  const counter=d.getElementById('newsCount');if(counter)counter.textContent=String(clean.length);
+  const status=d.getElementById('newsStatus');if(status)status.textContent='🟢 Noticias recientes';
+  patchVisuals();
+  return true;
+ }catch(e){console.warn('Render directo de noticias:',e);return false}
+}
+
+function renderOfficialDirect(data){
+ try{
+  const d=doc();if(!d)return false;
+  const current=Array.isArray(data.current_alerts)?data.current_alerts:[];
+  const past=Array.isArray(data.past_alerts)?data.past_alerts:[];
+  const all=Array.isArray(data.alerts)?data.alerts:[];
+  const cur=current.length?current:all.filter(a=>String(a.status||'').toUpperCase()==='ACTUAL'||a.is_current===true);
+  const pa=past.length?past:all.filter(a=>!cur.includes(a));
+  const render=(items,pastMode)=>items.map(a=>{
+    const sev=severityLabel(a.severity||a.level||a.color);const cls=severityClass(a.severity||a.level||a.color);
+    const title=esc(a.title||a.name||a.alert_type||'Aviso meteorológico');
+    const desc=esc(a.description||a.message||'');
+    const region=esc(a.region||a.regions||a.departments||'Perú');
+    const dates=esc(alertDateText(a));
+    const temporal=pastMode?'Aviso pasado':'Aviso actual';
+    const link=a.url?`<a class="alert-link" href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">Ver aviso oficial</a>`:'';
+    return `<article class="alert-card official ${cls}"><div class="alert-title">${title}</div><div style="margin-top:7px"><span class="badge ${cls}">${sev}</span> <span class="badge info">${temporal}</span></div><div class="alert-meta">${dates}${region?' · '+region:''}</div>${desc?`<div class="alert-meta">${desc}</div>`:''}${link}</article>`;
+  }).join('');
+  const currentBox=d.getElementById('officialAlerts');const pastBox=d.getElementById('pastOfficialAlerts');
+  if(currentBox)currentBox.innerHTML=render(cur,false)||'<div class="empty">No hay avisos oficiales vigentes en este momento.</div>';
+  if(pastBox)pastBox.innerHTML=render(pa,true)||'<div class="empty">No hay avisos oficiales pasados disponibles.</div>';
+  const status=d.getElementById('alertsStatus');if(status)status.textContent=`SENAMHI: ${cur.length} actuales · ${pa.length} pasados`;
+  patchSeverity();
+  return true;
+ }catch(e){console.warn('Render directo de SENAMHI:',e);return false}
+}
+
+async function forceDataSync(){
+ try{
+  const d=doc();if(!d)return;
+  const api=d.getElementById('api');const base=(api&&api.value?api.value:'').replace(/\/$/,'');if(!base)return;
+  const [newsRes,officialRes]=await Promise.all([
+   fetch(base+'/news?q=Perú%20alerta%20climática%20lluvias%20inundaciones%20desbordes%20huaicos%20SENAMHI',{cache:'no-store'}),
+   fetch(base+'/official-alerts',{cache:'no-store'})
+  ]);
+  if(newsRes.ok){const n=await newsRes.json();const arts=Array.isArray(n.articles)?n.articles:[];if(arts.length){renderNewsDirect(arts);newsImageMap=new Map(arts.map(a=>[(a.title||'').trim().toLowerCase(),a.socialimage||a.image_url||'']).filter(x=>x[1]));}}
+  if(officialRes.ok){const o=await officialRes.json();renderOfficialDirect(o);}
+  patchVisuals();
+ }catch(e){console.warn('Sincronización directa:',e)}
 }
 
 function stabilize(){
@@ -88,7 +151,7 @@ function stabilize(){
 function patchCounter(){try{const d=doc();if(!d||!d.body)return;const walker=d.createTreeWalker(d.body,NodeFilter.SHOW_TEXT);let n,c=null;while(n=walker.nextNode()){if(/SENAMHI:\s*\d+\s*(?:vigentes|actuales?)\s*[·•]\s*\d+\s*pasados?/i.test(n.nodeValue||'')){c=n.parentElement;break}}if(!c)return;const count=b=>b?Array.from(b.children).filter(x=>usefulText((x.textContent||'').trim())).length:0;c.textContent=`SENAMHI: ${count(d.getElementById('officialAlerts'))} actuales · ${count(d.getElementById('pastOfficialAlerts'))} pasados`}catch(e){}}
 function patchSeverity(){try{const d=doc();if(!d)return;d.querySelectorAll('.badge').forEach(b=>{const t=(b.textContent||'').trim().toUpperCase();if(t==='BAJO')b.classList.add('low')})}catch(e){}}
 function tick(){stabilize();patchVisuals();patchCounter();patchSeverity()}
-frame.addEventListener('load',()=>{loadNewsImages();tick();setTimeout(loadNewsImages,1000);setTimeout(tick,300);setTimeout(tick,1000);setTimeout(tick,2500);setInterval(()=>{tick();loadNewsImages()},30000);try{const d=doc();if(d&&d.body){new MutationObserver(tick).observe(d.body,{childList:true,subtree:true)}}catch(e){}});
+frame.addEventListener('load',()=>{forceDataSync();loadNewsImages();tick();setTimeout(forceDataSync,1000);setTimeout(loadNewsImages,1000);setTimeout(tick,300);setTimeout(tick,1000);setTimeout(tick,2500);setInterval(()=>{tick();forceDataSync();loadNewsImages()},30000);try{const d=doc();if(d&&d.body){new MutationObserver(()=>{patchVisuals();patchSeverity()}).observe(d.body,{childList:true,subtree:true})}}catch(e){}});
 </script>
 </body>
 </html>
