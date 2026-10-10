@@ -10,8 +10,8 @@ from bs4 import BeautifulSoup
 
 # SENAMHI publica los avisos meteorológicos desde su portal oficial.
 # No se almacenan avisos escritos manualmente en el proyecto.
-SENAMHI_ALERTS_URL = "https://web2.senamhi.gob.pe/?p=avisos"
-SENAMHI_ALERTS_FALLBACK_URL = "https://www.senamhi.gob.pe/main.php?dp=lima&p=avisos-meteorologicos"
+SENAMHI_ALERTS_URL = "https://www.senamhi.gob.pe/main.php?dp=lima&p=avisos-meteorologicos"
+SENAMHI_ALERTS_FALLBACK_URL = "https://web2.senamhi.gob.pe/?p=avisos"
 SENAMHI_SHORT_TERM_RAIN_URL = "https://www.senamhi.gob.pe/servicios/?p=aviso-24H"
 MONTHS_ES = {"ene":1,"enero":1,"feb":2,"febrero":2,"mar":3,"marzo":3,"abr":4,"abril":4,"may":5,"mayo":5,"jun":6,"junio":6,"jul":7,"julio":7,"ago":8,"agosto":8,"sep":9,"sept":9,"septiembre":9,"oct":10,"octubre":10,"nov":11,"noviembre":11,"dic":12,"diciembre":12}
 
@@ -96,11 +96,12 @@ def _parse_national_tables(html: str, source_url: str) -> list[dict]:
 def _parse_short_term_rain(html: str) -> list[dict]:
     soup = BeautifulSoup(html, "html.parser")
     text = soup.get_text(" ", strip=True)
-    match = re.search(r"N[°º]\s*(\d+)\s*-\s*(\d{4}).{0,800}?NIVEL\s+(AMARILLO|NARANJA|ROJO|VERDE)", text, re.I)
+    match = re.search(r"N[°º]\s*(\d+)\s*-\s*(\d{4}).{0,1200}?NIVEL\s+(AMARILLO|NARANJA|ROJO|VERDE)", text, re.I)
     if not match: return []
     number, year, level = match.groups()
-    start_match = re.search(r"Fecha de inicio:\s*([^·]+?)(?:Duración|Fin|$)", text, re.I)
-    return [{"id":f"senamhi-rain-{year}-{number}","source":"SENAMHI","official":True,"type":"AVISO_CORTO_PLAZO_LLUVIA","title":"AVISO DE CORTO PLAZO ANTE LLUVIAS INTENSAS","number":number,"issued_at":"","start_at":start_match.group(1).strip() if start_match else "","end_at":"","duration":"24 horas","level":level.upper(),"url":SENAMHI_SHORT_TERM_RAIN_URL}]
+    start_match = re.search(r"Fecha de inicio:\s*(.*?)(?:\s+Duración:|\s+Plazo:|$)", text, re.I)
+    start_value = start_match.group(1).strip() if start_match else ""
+    return [{"id":f"senamhi-rain-{year}-{number}","source":"SENAMHI","official":True,"type":"AVISO_CORTO_PLAZO_LLUVIA","title":"AVISO DE CORTO PLAZO ANTE LLUVIAS INTENSAS","number":number,"issued_at":"","start_at":start_value,"end_at":"","duration":"24 horas","level":level.upper(),"url":SENAMHI_SHORT_TERM_RAIN_URL}]
 
 
 def senamhi_alerts() -> dict:
@@ -124,7 +125,7 @@ def senamhi_alerts() -> dict:
         alert["status"], alert["is_current"] = status, status == "ACTUAL"
         dedup[alert["id"]] = alert
 
-    ordered = sorted(dedup.values(), key=lambda x:_parse_datetime(str(x.get("end_at",""))) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+    ordered = sorted(dedup.values(), key=lambda x:_parse_datetime(str(x.get("end_at",""))) or _parse_datetime(str(x.get("start_at",""))) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
     current = [a for a in ordered if a["status"] == "ACTUAL"]
     past = [a for a in ordered if a["status"] == "PASADO"]
     upcoming = [a for a in ordered if a["status"] == "PROXIMO"]
