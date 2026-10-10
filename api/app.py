@@ -17,6 +17,7 @@ from flask_cors import CORS
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "src"))
 from senamhi import senamhi_alerts
+from kafka_service import publish_alert
 
 app = Flask(__name__)
 CORS(app)
@@ -303,7 +304,6 @@ def _fetch_news_source(source):
 
 
 def peruvian_climate_rss_news() -> list[dict]:
-    # Se consultan las fuentes en paralelo para que una fuente lenta no bloquee toda la sección.
     sources = [
         ("SENAMHI", "https://www.senamhi.gob.pe/?p=prediccion", None),
         ("SENAMHI", "https://www.senamhi.gob.pe/?p=fenomeno-el-nino", None),
@@ -314,7 +314,6 @@ def peruvian_climate_rss_news() -> list[dict]:
     ]
     articles: list[dict] = []
     seen: set[str] = set()
-
     with ThreadPoolExecutor(max_workers=len(sources)) as executor:
         futures = [executor.submit(_fetch_news_source, source) for source in sources]
         for future in as_completed(futures):
@@ -329,8 +328,6 @@ def peruvian_climate_rss_news() -> list[dict]:
                     print(f"NEWS PARSE {source_label} {feed_or_page}: {exc}")
             elif error:
                 print(f"NEWS {source_label} {feed_or_page}: {error}")
-
-            # Los respaldos también se consultan solo cuando la fuente principal falló o no aportó noticias.
             if fallback_page and len(articles) < 10:
                 try:
                     fallback_content = _fetch(fallback_page)
@@ -348,7 +345,6 @@ def peruvian_climate_rss_news() -> list[dict]:
                 return parsedate_to_datetime(value).timestamp()
             except Exception:
                 return 0
-
     articles.sort(key=sort_key, reverse=True)
     return articles[:20]
 
@@ -395,14 +391,7 @@ def flood():
 def news():
     query = request.args.get("q", "Perú alerta climática lluvias inundaciones desbordes huaicos SENAMHI")
     articles = peruvian_climate_rss_news()
-    return jsonify({
-        "source": "SENAMHI + medios peruanos (RPP y El Comercio)",
-        "fetched_at": datetime.now(timezone.utc).isoformat(),
-        "query": query,
-        "articles": articles,
-        "source_update_note": "Solo noticias climáticas relevantes de Perú. Se excluyen internacionales, genéricas, políticas, deportes, entretenimiento y categoría Informativa."
-            if articles else "No se encontraron noticias climáticas válidas en las fuentes peruanas configuradas."
-    })
+    return jsonify({"source": "SENAMHI + medios peruanos (RPP y El Comercio)", "fetched_at": datetime.now(timezone.utc).isoformat(), "query": query, "articles": articles, "source_update_note": "Solo noticias climáticas relevantes de Perú. Se excluyen internacionales, genéricas, políticas, deportes, entretenimiento y categoría Informativa." if articles else "No se encontraron noticias climáticas válidas en las fuentes peruanas configuradas."})
 
 
 @app.get("/official-alerts")
@@ -425,12 +414,12 @@ def monitor():
         bucket = datetime.now(timezone.utc).strftime("%Y%m%d%H"); alert_id = f"risk-{station_id}-{bucket}"
         if not any(x.get("id") == alert_id for x in alerts):
             item = {"id": alert_id, "station_id": station_id, "timestamp": datetime.now(timezone.utc).isoformat(), "level": level, "alert_type": "RIESGO_CALCULADO", "official": False, "source": "Climate Alert Platform", "message": f"Riesgo {level}: {', '.join(reasons)}", "rain_mm_h": rain_mm_h, "river_level_m": river_value, "location": {"lat": lat, "lon": lon}}
-            alerts.insert(0, item); created.append(item)
+            alerts.insert(0, item); created.append(item); publish_alert(item)
     official = senamhi_alerts()
     for item in official.get("alerts", []):
         alert_id = f"official-{item['id']}"
         if not any(x.get("id") == alert_id for x in alerts):
-            stored = {**item, "id": alert_id, "alert_type": item.get("type", "AVISO_OFICIAL")}; alerts.insert(0, stored); created.append(stored)
+            stored = {**item, "id": alert_id, "alert_type": item.get("type", "AVISO_OFICIAL")}; alerts.insert(0, stored); created.append(stored); publish_alert(stored)
     return jsonify({"checked_at": datetime.now(timezone.utc).isoformat(), "location": {"lat": lat, "lon": lon}, "risk": {"level": level, "rain_mm_h": rain_mm_h, "river_level_m": river_value, "reasons": reasons}, "official_alerts": official.get("alerts", []), "created_alerts": created})
 
 
@@ -441,20 +430,12 @@ def create_measurement():
     rain_mm_h = float(data["rain_mm_h"])
     river_level_m = float(data["river_level_m"])
     level, reasons = risk(rain_mm_h, river_level_m)
-    item = {
-        "id": str(uuid4()),
-        "station_id": station_id,
-        "timestamp": data.get("timestamp", datetime.now(timezone.utc).isoformat()),
-        "rain_mm_h": rain_mm_h,
-        "river_level_m": river_level_m,
-        "risk_level": level,
-        "risk_reasons": reasons,
-        "location": data.get("location", {}),
-    }
-    # Antes se insertaba solo en memoria y por eso Render mostraba 0 mediciones tras reiniciar.
+    item = {"id": str(uuid4()), "station_id": station_id, "timestamp": data.get("timestamp", datetime.now(timezone.utc).isoformat()), "rain_mm_h": rain_mm_h, "river_level_m": river_level_m, "risk_level": level, "risk_reasons": reasons, "location": data.get("location", {})}
     _store_measurement(item)
     if level in {"ALTO", "CRITICO"}:
-        alerts.insert(0, {"id": str(uuid4()), "station_id": station_id, "timestamp": item["timestamp"], "level": level, "alert_type": "RIESGO_CALCULADO", "official": False, "source": "Climate Alert Platform", "message": f"Riesgo {level}: {', '.join(reasons)}"})
+        alert_item = {"id": str(uuid4()), "station_id": station_id, "timestamp": item["timestamp"], "level": level, "alert_type": "RIESGO_CALCULADO", "official": False, "source": "Climate Alert Platform", "message": f"Riesgo {level}: {', '.join(reasons)}"}
+        alerts.insert(0, alert_item)
+        publish_alert(alert_item)
     return jsonify({"measurement": item}), 201
 
 
