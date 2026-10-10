@@ -10,7 +10,7 @@
 <style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#eef5f8}iframe{display:block;width:100%;height:100%;border:0}</style>
 </head>
 <body>
-<iframe id="dashboardFrame" src="index-original.html?v=20261010-profesor" title="Climate Alert Platform"></iframe>
+<iframe id="dashboardFrame" src="index-original.html?v=20261010-profesor2" title="Climate Alert Platform"></iframe>
 <script>
 /*
  * Capa de presentación para las correcciones solicitadas por el profesor.
@@ -20,123 +20,29 @@
  */
 const frame=document.getElementById('dashboardFrame');
 const CACHE_PREFIX='cap20261010_';
-
 function doc(){try{return frame.contentDocument||frame.contentWindow.document}catch(e){return null}}
 function apiBase(){const d=doc();const el=d&&d.getElementById('api');return ((el&&el.value)||'https://climate-alert-platform-api.onrender.com').replace(/\/$/,'')}
 function safeText(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
-function sevInfo(v){
-  const s=String(v||'').toUpperCase();
-  if(s.includes('CRIT')||s.includes('ROJO'))return{key:'critical',label:'ROJO',score:4};
-  if(s.includes('ALTA')||s.includes('NARANJA')||s.includes('HIGH'))return{key:'high',label:'NARANJA',score:3};
-  if(s.includes('MEDIA')||s.includes('AMARILLO')||s.includes('MEDIUM'))return{key:'medium',label:'AMARILLO',score:2};
-  return{key:'low',label:'VERDE',score:1};
-}
+function sevInfo(v){const s=String(v||'').toUpperCase();if(s.includes('CRIT')||s.includes('ROJO'))return{key:'critical',label:'ROJO',score:4};if(s.includes('ALTA')||s.includes('NARANJA')||s.includes('HIGH'))return{key:'high',label:'NARANJA',score:3};if(s.includes('MEDIA')||s.includes('AMARILLO')||s.includes('MEDIUM'))return{key:'medium',label:'AMARILLO',score:2};return{key:'low',label:'VERDE',score:1}}
 function alertDate(a){return a.start_at||a.start_date||a.start||a.date_start||a.date||''}
-
-function injectStyles(){
-  const d=doc();if(!d||!d.head)return;
-  if(d.getElementById('teacherFixStyles'))return;
-  const s=d.createElement('style');s.id='teacherFixStyles';s.textContent=`
-    #lat,#lon,#locBtn,.location-tag{display:none!important}
-    .hero-controls{margin-top:8px!important}
-    #worstZonesPanel{margin-top:18px}
-    .worst-zones{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}
-    .worst-zone{position:relative;overflow:hidden;background:#fff;border:1px solid #dce8ee;border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(19,64,88,.06)}
-    .worst-zone:before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:#1b8d68}
-    .worst-zone.high:before{background:#e07a00}.worst-zone.medium:before{background:#c19a00}.worst-zone.critical:before{background:#c53a43}
-    .worst-zone-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
-    .worst-risk{font-size:10px;font-weight:900;letter-spacing:.04em;padding:5px 9px;border-radius:999px}
-    .worst-risk.critical{background:#ffe0e0;color:#a01818}.worst-risk.high{background:#ffe9cf;color:#9a4a00}.worst-risk.medium{background:#fff5cc;color:#785300}.worst-risk.low{background:#def6e8;color:#15723e}
-    .worst-zone h3{margin:11px 0 5px;font-size:15px;line-height:1.25;color:#15334b}
-    .worst-region{font-size:11px;color:#6d8090;margin-bottom:8px}
-    .worst-desc{font-size:11px;line-height:1.45;color:#526b7b;min-height:34px}
-    .worst-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:11px}
-    .worst-chip{font-size:10px;font-weight:800;padding:5px 8px;border-radius:999px;background:#eef5f8;color:#365b70}
-    .worst-link{display:inline-block;margin-top:11px;color:#07516d;font-size:11px;font-weight:850;text-decoration:none}
-    .worst-link:hover{text-decoration:underline}
-    .worst-empty{padding:20px;border:1px dashed #d6e5eb;border-radius:15px;text-align:center;color:#6d8090;background:#f6fafb;font-size:12px}
-    @media(max-width:900px){.worst-zones{grid-template-columns:1fr 1fr}}
-    @media(max-width:650px){.worst-zones{grid-template-columns:1fr}.worst-zone{padding:14px}}
-  `;d.head.appendChild(s);
-}
-
-function ensureWorstPanel(){
-  const d=doc();if(!d||!d.body)return null;
-  let panel=d.getElementById('worstZonesPanel');if(panel)return panel;
-  const summary=d.querySelector('.summary');if(!summary)return null;
-  panel=d.createElement('section');panel.id='worstZonesPanel';panel.className='card';
-  panel.innerHTML=`
-    <div class="card-head">
-      <div><div class="card-title"><span>🚨</span><div><h2>Zonas con peor estado</h2><div class="card-kicker">Prioridad de atención según avisos oficiales vigentes de SENAMHI</div></div></div></div>
-      <div id="worstZonesStatus" class="status">Consultando alertas oficiales…</div>
-    </div>
-    <div id="worstZones" class="worst-zones"><div class="worst-empty">Consultando las zonas con mayor riesgo…</div></div>
-  `;
-  summary.insertAdjacentElement('afterend',panel);
-  return panel;
-}
-
-function renderWorstZones(items){
-  const d=doc();const box=d&&d.getElementById('worstZones');const status=d&&d.getElementById('worstZonesStatus');if(!box)return;
-  const current=(Array.isArray(items)?items:[]).filter(a=>String(a.status||'').toUpperCase()==='ACTUAL'||a.is_current===true||a.status==null);
-  const ranked=current.map(a=>{const sev=sevInfo(a.severity||a.level||a.color);return{a,sev}}).sort((x,y)=>y.sev.score-x.sev.score);
-  const top=ranked.slice(0,6);
-  if(status)status.textContent=top.length?`${top.length} zona${top.length===1?'':'s'} prioritaria${top.length===1?'':'s'}`:'Sin alertas vigentes';
-  if(!top.length){box.innerHTML='<div class="worst-empty">🟢 No hay zonas con alertas oficiales vigentes en este momento.</div>';localStorage.setItem(CACHE_PREFIX+'worst',box.innerHTML);return}
-  box.innerHTML=top.map(({a,sev})=>{
-    const title=safeText(a.title||a.name||a.alert_type||'Aviso meteorológico');
-    const region=safeText(a.region||a.regions||a.departments||'Perú');
-    const desc=safeText(a.description||a.message||'');
-    const rain=a.rain_mm??a.rainfall_mm??a.precipitation_mm??a.precipitation??'';
-    const river=a.river_level_m??a.flow??a.discharge??'';
-    const date=safeText(alertDate(a));
-    const link=a.url?`<a class="worst-link" href="${safeText(a.url)}" target="_blank" rel="noopener noreferrer">Ver aviso oficial ↗</a>`:'';
-    return `<article class="worst-zone ${sev.key}"><div class="worst-zone-top"><span class="worst-risk ${sev.key}">${sev.label} · RIESGO ${sev.score>=3?'ALTO':'MEDIO'}</span><span style="font-size:11px;color:#6d8090">${date}</span></div><h3>${title}</h3><div class="worst-region">📍 ${region}</div><div class="worst-desc">${desc||'Aviso oficial vigente de SENAMHI para la zona indicada.'}</div><div class="worst-meta">${rain!==''?`<span class="worst-chip">🌧️ ${safeText(rain)} mm</span>`:''}${river!==''?`<span class="worst-chip">🌊 ${safeText(river)} m</span>`:''}<span class="worst-chip">SENAMHI</span></div>${link}</article>`;
-  }).join('');
-  localStorage.setItem(CACHE_PREFIX+'worst',box.innerHTML);
-}
-
-async function syncWorstZones(){
-  try{
-    const r=await fetch(apiBase()+'/official-alerts',{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);
-    const data=await r.json();
-    const current=Array.isArray(data.current_alerts)?data.current_alerts:(Array.isArray(data.alerts)?data.alerts:[]);
-    renderWorstZones(current);
-  }catch(e){
-    const d=doc();const box=d&&d.getElementById('worstZones');const status=d&&d.getElementById('worstZonesStatus');
-    const cached=localStorage.getItem(CACHE_PREFIX+'worst');
-    if(box&&cached)box.innerHTML=cached;
-    if(status)status.textContent='Mostrando último estado válido';
-    console.warn('No se pudo actualizar zonas prioritarias:',e);
-  }
-}
-
-function stabilize(){
-  const d=doc();if(!d)return;
-  const targets=[['rows'],['news'],['officialAlerts'],['pastOfficialAlerts'],['systemAlerts']];
-  targets.forEach(([id])=>{
-    const el=d.getElementById(id);if(!el)return;
-    const has=el.children&&Array.from(el.children).some(x=>!(/no hay|sin avisos|aún no hay|no se pudieron|conecta la api/i.test((x.textContent||'').trim())));
-    const key=CACHE_PREFIX+id;
-    if(has){localStorage.setItem(key,el.innerHTML)}else{const cached=localStorage.getItem(key);if(cached)el.innerHTML=cached}
-  });
-}
-
-function applyFixes(){
-  const d=doc();if(!d||!d.body)return;
-  injectStyles();
-  ensureWorstPanel();
-  const lat=d.getElementById('lat'),lon=d.getElementById('lon'),loc=d.getElementById('locBtn');
-  [lat,lon,loc].forEach(el=>{if(el)el.setAttribute('aria-hidden','true')});
-  stabilize();
-}
-
-frame.addEventListener('load',()=>{
-  setTimeout(()=>{applyFixes();syncWorstZones()},250);
-  setTimeout(()=>{applyFixes();syncWorstZones()},1200);
-  setInterval(()=>{applyFixes();syncWorstZones();stabilize()},60000);
-  try{const d=doc();if(d&&d.body)new MutationObserver(()=>applyFixes()).observe(d.body,{childList:true,subtree:true});}catch(e){}
-});
+function injectStyles(){const d=doc();if(!d||!d.head||d.getElementById('teacherFixStyles'))return;const s=d.createElement('style');s.id='teacherFixStyles';s.textContent=`
+#lat,#lon,#locBtn,.location-tag{display:none!important}.hero-controls{margin-top:8px!important}
+#worstZonesPanel{margin-top:18px}.worst-zones{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}
+.worst-zone{position:relative;overflow:hidden;background:#fff;border:1px solid #dce8ee;border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(19,64,88,.06)}
+.worst-zone:before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:#1b8d68}.worst-zone.high:before{background:#e07a00}.worst-zone.medium:before{background:#c19a00}.worst-zone.critical:before{background:#c53a43}
+.worst-zone-top{display:flex;justify-content:space-between;align-items:center;gap:8px}.worst-risk{font-size:10px;font-weight:900;letter-spacing:.04em;padding:5px 9px;border-radius:999px}
+.worst-risk.critical{background:#ffe0e0;color:#a01818}.worst-risk.high{background:#ffe9cf;color:#9a4a00}.worst-risk.medium{background:#fff5cc;color:#785300}.worst-risk.low{background:#def6e8;color:#15723e}
+.worst-zone h3{margin:11px 0 5px;font-size:15px;line-height:1.25;color:#15334b}.worst-region{font-size:11px;color:#6d8090;margin-bottom:8px}.worst-desc{font-size:11px;line-height:1.45;color:#526b7b;min-height:34px}
+.worst-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:11px}.worst-chip{font-size:10px;font-weight:800;padding:5px 8px;border-radius:999px;background:#eef5f8;color:#365b70}.worst-link{display:inline-block;margin-top:11px;color:#07516d;font-size:11px;font-weight:850;text-decoration:none}.worst-link:hover{text-decoration:underline}
+.worst-empty{padding:20px;border:1px dashed #d6e5eb;border-radius:15px;text-align:center;color:#6d8090;background:#f6fafb;font-size:12px}
+@media(max-width:900px){.worst-zones{grid-template-columns:1fr 1fr}}@media(max-width:650px){.worst-zones{grid-template-columns:1fr}.worst-zone{padding:14px}}
+`;d.head.appendChild(s)}
+function ensureWorstPanel(){const d=doc();if(!d||!d.body)return null;let panel=d.getElementById('worstZonesPanel');if(panel)return panel;const summary=d.querySelector('.summary');if(!summary)return null;panel=d.createElement('section');panel.id='worstZonesPanel';panel.className='card';panel.innerHTML=`<div class="card-head"><div><div class="card-title"><span>🚨</span><div><h2>Zonas con peor estado</h2><div class="card-kicker">Prioridad de atención según avisos oficiales vigentes de SENAMHI</div></div></div></div><div id="worstZonesStatus" class="status">Consultando alertas oficiales…</div></div><div id="worstZones" class="worst-zones"><div class="worst-empty">Consultando las zonas con mayor riesgo…</div></div>`;summary.insertAdjacentElement('afterend',panel);return panel}
+function renderWorstZones(items){const d=doc();const box=d&&d.getElementById('worstZones');const status=d&&d.getElementById('worstZonesStatus');if(!box)return;const current=(Array.isArray(items)?items:[]).filter(a=>String(a.status||'').toUpperCase()==='ACTUAL'||a.is_current===true||a.status==null);const ranked=current.map(a=>{const sev=sevInfo(a.severity||a.level||a.color);return{a,sev}}).sort((x,y)=>y.sev.score-x.sev.score);const top=ranked.slice(0,6);if(status)status.textContent=top.length?`${top.length} zona${top.length===1?'':'s'} prioritaria${top.length===1?'':'s'}`:'Sin alertas vigentes';if(!top.length){box.innerHTML='<div class="worst-empty">🟢 No hay zonas con alertas oficiales vigentes en este momento.</div>';localStorage.setItem(CACHE_PREFIX+'worst',box.innerHTML);return}box.innerHTML=top.map(({a,sev})=>{const title=safeText(a.title||a.name||a.alert_type||'Aviso meteorológico');const region=safeText(a.region||a.regions||a.departments||'Perú');const desc=safeText(a.description||a.message||'');const rain=a.rain_mm??a.rainfall_mm??a.precipitation_mm??a.precipitation??'';const river=a.river_level_m??a.flow??a.discharge??'';const date=safeText(alertDate(a));const link=a.url?`<a class="worst-link" href="${safeText(a.url)}" target="_blank" rel="noopener noreferrer">Ver aviso oficial ↗</a>`:'';return `<article class="worst-zone ${sev.key}"><div class="worst-zone-top"><span class="worst-risk ${sev.key}">${sev.label} · RIESGO ${sev.score>=3?'ALTO':'MEDIO'}</span><span style="font-size:11px;color:#6d8090">${date}</span></div><h3>${title}</h3><div class="worst-region">📍 ${region}</div><div class="worst-desc">${desc||'Aviso oficial vigente de SENAMHI para la zona indicada.'}</div><div class="worst-meta">${rain!==''?`<span class="worst-chip">🌧️ ${safeText(rain)} mm</span>`:''}${river!==''?`<span class="worst-chip">🌊 ${safeText(river)} m</span>`:''}<span class="worst-chip">SENAMHI</span></div>${link}</article>`}).join('');localStorage.setItem(CACHE_PREFIX+'worst',box.innerHTML)}
+async function syncWorstZones(){try{const r=await fetch(apiBase()+'/official-alerts',{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);const data=await r.json();const current=Array.isArray(data.current_alerts)?data.current_alerts:(Array.isArray(data.alerts)?data.alerts:[]);renderWorstZones(current)}catch(e){const d=doc();const box=d&&d.getElementById('worstZones');const status=d&&d.getElementById('worstZonesStatus');const cached=localStorage.getItem(CACHE_PREFIX+'worst');if(box&&cached)box.innerHTML=cached;if(status)status.textContent='Mostrando último estado válido';console.warn('No se pudo actualizar zonas prioritarias:',e)}}
+function stabilize(){const d=doc();if(!d)return;[['rows'],['news'],['officialAlerts'],['pastOfficialAlerts'],['systemAlerts']].forEach(([id])=>{const el=d.getElementById(id);if(!el)return;const has=el.children&&Array.from(el.children).some(x=>!(/no hay|sin avisos|aún no hay|no se pudieron|conecta la api/i.test((x.textContent||'').trim())));const key=CACHE_PREFIX+id;if(has)localStorage.setItem(key,el.innerHTML);else{const cached=localStorage.getItem(key);if(cached)el.innerHTML=cached}})}
+function applyFixes(){const d=doc();if(!d||!d.body)return;injectStyles();ensureWorstPanel();const lat=d.getElementById('lat'),lon=d.getElementById('lon'),loc=d.getElementById('locBtn');[lat,lon,loc].forEach(el=>{if(el)el.setAttribute('aria-hidden','true')});if(d.defaultView){d.defaultView.useCurrentLocation=function(){const tag=d.getElementById('locationTag');if(tag)tag.textContent='📍 Ubicación de referencia: Piura';return false}}stabilize()}
+frame.addEventListener('load',()=>{setTimeout(()=>{applyFixes();syncWorstZones()},250);setTimeout(()=>{applyFixes();syncWorstZones()},1200);setInterval(()=>{applyFixes();syncWorstZones();stabilize()},60000);try{const d=doc();if(d&&d.body)new MutationObserver(()=>applyFixes()).observe(d.body,{childList:true,subtree:true})}catch(e){}});
 </script>
 </body>
 </html>
