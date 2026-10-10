@@ -44,7 +44,7 @@ frame.addEventListener('load',()=>{setTimeout(refreshVisuals,500);setTimeout(ref
 </script>
 
 <script>
-(function(){const cover=document.getElementById('projectCover');const frame=document.getElementById('dashboardFrame');function enter(target){if(!cover)return;cover.style.opacity='0';cover.style.transition='opacity .35s ease';setTimeout(()=>{cover.remove();if(target)frame.contentWindow.postMessage({action:target},'*')},350)}document.getElementById('enterDashboard')?.addEventListener('click',()=>enter('dashboard'));document.getElementById('coverAlerts')?.addEventListener('click',()=>enter('alerts'));})();
+(function(){const cover=document.getElementById('projectCover');const frame=document.getElementById('dashboardFrame');function enter(target){if(!cover)return;cover.style.opacity='0';cover.style.transition='opacity .35s ease';setTimeout(()=>{cover.remove();if(target==='alerts'){setTimeout(()=>{const d=frame.contentDocument||frame.contentWindow.document;const el=d.getElementById('capZones')||d.querySelector('#capVisual .cap-card');if(el)el.scrollIntoView({behavior:'smooth',block:'start'});},400)}else{window.scrollTo(0,0)}},350)}document.getElementById('enterDashboard')?.addEventListener('click',()=>enter('dashboard'));document.getElementById('coverAlerts')?.addEventListener('click',()=>enter('alerts'));})();
 </script>
 </body>
 </html>
