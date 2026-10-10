@@ -1,0 +1,55 @@
+name: Fix real news image extraction
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch API image extraction
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('api/app.py')
+          s = p.read_text(encoding='utf-8')
+
+          old = '''def _rss_image(item: ET.Element, description: str = "") -> str | None:\n    """Extract the real image URL from RSS/Media RSS, with HTML fallback."""\n    for child in item.iter():\n        tag = child.tag.split("}")[-1].lower() if isinstance(child.tag, str) else ""\n        if tag in {"content", "thumbnail", "image", "enclosure"}:\n            url = (child.attrib.get("url") or child.attrib.get("href") or "").strip()\n            if url.startswith(("https://", "http://")):\n                return url\n    if description:\n        img = BeautifulSoup(description, "html.parser").find("img", src=True)\n        if img:\n            url = str(img.get("src") or "").strip()\n            if url.startswith(("https://", "http://")):\n                return url\n    return None\n'''
+
+          new = '''def _rss_image(item: ET.Element, description: str = "") -> str | None:\n    """Extract a real news image from RSS/Media RSS and HTML descriptions."""\n    candidates = []\n    for child in item.iter():\n        tag = child.tag.split("}")[-1].lower() if isinstance(child.tag, str) else ""\n        if tag not in {"content", "thumbnail", "image", "enclosure"}:\n            continue\n        attrs = child.attrib or {}\n        for key in ("url", "href", "src", "resource", "about"):\n            value = str(attrs.get(key) or "").strip()\n            if value:\n                candidates.append(value)\n        text = (child.text or "").strip()\n        if text:\n            candidates.append(text)\n\n    if description:\n        soup = BeautifulSoup(description, "html.parser")\n        for img in soup.find_all("img"):\n            for key in ("src", "data-src", "data-original", "data-lazy-src"):\n                value = str(img.get(key) or "").strip()\n                if value:\n                    candidates.append(value)\n            srcset = str(img.get("srcset") or "").strip()\n            if srcset:\n                candidates.append(srcset.split(",")[0].strip().split(" ")[0])\n\n    for value in candidates:\n        if value.startswith(("https://", "http://")):\n            return value\n    return None\n\n\ndef _article_page_image(article_url: str) -> str | None:\n    """Fallback: obtain the article's actual Open Graph/Twitter image."""\n    try:\n        response = requests.get(\n            article_url,\n            timeout=5,\n            headers={\n                "User-Agent": "Mozilla/5.0 (compatible; ClimateAlertPlatform/1.0)",\n                "Accept-Language": "es-PE,es;q=0.9",\n            },\n        )\n        response.raise_for_status()\n        soup = BeautifulSoup(response.text, "html.parser")\n        for attrs in (\n            {"property": "og:image"},\n            {"property": "og:image:url"},\n            {"name": "twitter:image"},\n            {"name": "twitter:image:src"},\n        ):\n            meta = soup.find("meta", attrs=attrs)\n            value = str(meta.get("content") or "").strip() if meta else ""\n            if value:\n                return urljoin(article_url, value)\n        link = soup.find("link", rel=lambda value: value and "image_src" in value)\n        if link and link.get("href"):\n            return urljoin(article_url, str(link.get("href")).strip())\n    except Exception as exc:\n        print(f"NEWS IMAGE {article_url}: {exc}")\n    return None\n'''
+
+          if old not in s:
+              raise SystemExit('Expected _rss_image block not found')
+          s = s.replace(old, new, 1)
+
+          old2 = '''    severity = _news_severity(title, description)\n    if severity == "INFORMATIVA":\n        return\n    key = link.lower().split("#", 1)[0]\n'''
+          new2 = '''    severity = _news_severity(title, description)\n    if severity == "INFORMATIVA":\n        return\n    if not image_url:\n        image_url = _article_page_image(link)\n    key = link.lower().split("#", 1)[0]\n'''
+          if old2 not in s:
+              raise SystemExit('Expected _add_article block not found')
+          s = s.replace(old2, new2, 1)
+
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Commit API patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add api/app.py
+          git diff --cached --quiet && exit 0
+          git commit -m "Use real article images when RSS image is missing"
+          git push
+
+      - name: Remove one-time workflow
+        run: |
+          git rm .github/workflows/fix-real-news-images.yml
+          git commit -m "Remove one-time image fix workflow"
+          git push
