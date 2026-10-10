@@ -6,7 +6,7 @@ services:
     branch: main
     rootDir: api
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app
+    startCommand: gunicorn app_wrapper:app
     autoDeploy: true
     envVars:
       - key: DATABASE_URL
