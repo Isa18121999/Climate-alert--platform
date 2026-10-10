@@ -10,162 +10,61 @@
 <style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#eef5f8}iframe{display:block;width:100%;height:100%;border:0}</style>
 </head>
 <body>
-<iframe id="dashboardFrame" src="index-original.html?v=20261010-stable2" title="Climate Alert Platform"></iframe>
+<iframe id="dashboardFrame" src="index-original.html?v=20261010-fix3" title="Climate Alert Platform"></iframe>
 <script>
-/*
-  Capa de estabilidad del dashboard.
-  El contenido real sigue en index-original.html; esta capa conserva en pantalla
-  los datos que ya llegaron correctamente y evita que una respuesta temporalmente
-  vacía del backend borre información válida.
-*/
+/* Capa de estabilidad y presentación: conserva datos válidos y aplica correcciones
+   visuales sin introducir avisos ni noticias manuales. */
 const frame=document.getElementById('dashboardFrame');
-let cachedMeasurements='';
-let cachedMeasurementStatus='';
-let cachedNews='';
-let cachedNewsStatus='';
-let cachedCurrentAlerts='';
-let cachedPastAlerts='';
-let cachedSystemAlerts='';
-let cachedAlertsStatus='';
-let lastCloudSync=0;
-
+let cachedMeasurements='',cachedMeasurementStatus='',cachedNews='',cachedNewsStatus='',cachedCurrentAlerts='',cachedPastAlerts='',cachedSystemAlerts='',cachedAlertsStatus='';
 function doc(){try{return frame.contentDocument||frame.contentWindow.document}catch(e){return null}}
 function usefulText(text){return text&&!/no hay|sin avisos|aún no hay|conecta la api|no se pudieron cargar|no se pudieron consultar/i.test(text)}
 function nonEmptyChildren(el){return el&&Array.from(el.children).some(x=>usefulText((x.textContent||'').trim()))}
+function saveLocal(k,v){try{if(v)localStorage.setItem(k,v)}catch(e){}}
+function loadLocal(k){try{return localStorage.getItem(k)||''}catch(e){return ''}}
 
-function saveLocal(key,value){try{if(value)localStorage.setItem(key,value)}catch(e){}}
-function loadLocal(key){try{return localStorage.getItem(key)||''}catch(e){return ''}}
-
-function stabilizeVisibleContent(){
-  try{
-    const d=doc();if(!d||!d.body)return;
-
-    const rows=d.getElementById('rows');
-    const measurementStatus=d.getElementById('measurements');
-    if(rows&&nonEmptyChildren(rows)){
-      cachedMeasurements=rows.innerHTML;
-      if(measurementStatus&&usefulText(measurementStatus.textContent||''))cachedMeasurementStatus=measurementStatus.textContent;
-      saveLocal('cap_measurements_html',cachedMeasurements);
-      saveLocal('cap_measurements_status',cachedMeasurementStatus);
-    }else if(rows){
-      if(!cachedMeasurements)cachedMeasurements=loadLocal('cap_measurements_html');
-      if(!cachedMeasurementStatus)cachedMeasurementStatus=loadLocal('cap_measurements_status');
-      if(cachedMeasurements)rows.innerHTML=cachedMeasurements;
-      if(measurementStatus&&cachedMeasurementStatus)measurementStatus.textContent=cachedMeasurementStatus;
-    }
-
-    const news=d.getElementById('news');
-    const newsStatus=d.getElementById('newsStatus');
-    if(news&&news.querySelector('.news-item')){
-      cachedNews=news.innerHTML;
-      if(newsStatus&&usefulText(newsStatus.textContent||''))cachedNewsStatus=newsStatus.textContent;
-      saveLocal('cap_news_html',cachedNews);
-      saveLocal('cap_news_status',cachedNewsStatus);
-    }else if(news){
-      if(!cachedNews)cachedNews=loadLocal('cap_news_html');
-      if(!cachedNewsStatus)cachedNewsStatus=loadLocal('cap_news_status');
-      if(cachedNews)news.innerHTML=cachedNews;
-      if(newsStatus&&cachedNewsStatus)newsStatus.textContent=cachedNewsStatus;
-    }
-
-    const current=d.getElementById('officialAlerts');
-    const past=d.getElementById('pastOfficialAlerts');
-    const system=d.getElementById('systemAlerts');
-    const alertStatus=d.getElementById('alertsStatus');
-
-    if(current&&nonEmptyChildren(current)){cachedCurrentAlerts=current.innerHTML;saveLocal('cap_current_alerts',cachedCurrentAlerts)}
-    else if(current){if(!cachedCurrentAlerts)cachedCurrentAlerts=loadLocal('cap_current_alerts');if(cachedCurrentAlerts)current.innerHTML=cachedCurrentAlerts}
-
-    if(past&&nonEmptyChildren(past)){cachedPastAlerts=past.innerHTML;saveLocal('cap_past_alerts',cachedPastAlerts)}
-    else if(past){if(!cachedPastAlerts)cachedPastAlerts=loadLocal('cap_past_alerts');if(cachedPastAlerts)past.innerHTML=cachedPastAlerts}
-
-    if(system&&nonEmptyChildren(system)){cachedSystemAlerts=system.innerHTML;saveLocal('cap_system_alerts',cachedSystemAlerts)}
-    else if(system){if(!cachedSystemAlerts)cachedSystemAlerts=loadLocal('cap_system_alerts');if(cachedSystemAlerts)system.innerHTML=cachedSystemAlerts}
-
-    if(alertStatus&&usefulText(alertStatus.textContent||'')){
-      cachedAlertsStatus=alertStatus.textContent;
-      saveLocal('cap_alerts_status',cachedAlertsStatus);
-    }else if(alertStatus){
-      if(!cachedAlertsStatus)cachedAlertsStatus=loadLocal('cap_alerts_status');
-      if(cachedAlertsStatus)alertStatus.textContent=cachedAlertsStatus;
-    }
-  }catch(e){console.warn('Estabilidad del dashboard:',e)}
-}
-
-async function syncCloudMeasurements(){
-  if(Date.now()-lastCloudSync<15000)return;
-  lastCloudSync=Date.now();
-  try{
-    const r=await fetch('https://climate-alert-platform-api.onrender.com/measurements',{cache:'no-store'});
-    if(!r.ok)throw new Error('HTTP '+r.status);
-    const data=await r.json();
-    const items=Array.isArray(data.items)?data.items:[];
-    // Nunca reemplazar datos visibles por una respuesta vacía.
-    if(!items.length)return;
-    const d=doc();if(!d)return;
-    const rows=d.getElementById('rows');
-    const status=d.getElementById('measurements');
-    if(!rows||!status)return;
-    rows.innerHTML=items.slice(0,10).map(x=>{
-      const risk=String(x.risk_level||'—').toUpperCase();
-      const cls=risk==='CRITICO'?'critical':risk==='ALTO'?'high':risk==='MEDIO'?'medium':'low';
-      return '<tr><td>'+(x.station_id||'—')+'</td><td>'+((x.rain_mm_h??'—'))+'</td><td>'+((x.river_level_m??'—'))+'</td><td><span class="badge '+cls+'">'+risk+'</span></td></tr>';
-    }).join('');
-    status.textContent=items.length+' mediciones registradas.';
-    cachedMeasurements=rows.innerHTML;
-    cachedMeasurementStatus=status.textContent;
-    saveLocal('cap_measurements_html',cachedMeasurements);
-    saveLocal('cap_measurements_status',cachedMeasurementStatus);
-  }catch(e){
-    console.warn('No se pudieron recuperar las mediciones de la nube:',e);
+function patchVisuals(){
+ try{
+  const d=doc();if(!d||!d.head||!d.body)return;
+  if(!d.getElementById('capVisualFix')){
+   const s=d.createElement('style');s.id='capVisualFix';s.textContent=`
+    .badge.low,.news-level.low{background:#def6e8!important;color:#15723e!important}
+    .alert-card.low{border-left-color:#1b8d68!important}
+    .news-item .cap-news-image{width:112px;height:76px;object-fit:cover;border-radius:12px;flex:0 0 112px;background:#eaf4f6}
+    @media(max-width:650px){.news-item .cap-news-image{width:86px;height:64px;flex-basis:86px}}
+   `;d.head.appendChild(s);
   }
+  d.querySelectorAll('.news-item').forEach(item=>{
+   if(item.querySelector('.cap-news-image'))return;
+   const img=d.createElement('img');img.className='cap-news-image';img.alt='Imagen relacionada con noticia climática';img.loading='lazy';
+   const text=(item.textContent||'').toLowerCase();
+   img.src=text.includes('calor')||text.includes('temperatura')?'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=240&q=75':'https://images.unsplash.com/photo-1534274988757-a28bf1a57d17?auto=format&fit=crop&w=240&q=75';
+   img.onerror=()=>{img.style.display='none'};
+   item.insertBefore(img,item.firstChild);
+  });
+ }catch(e){console.warn('Corrección visual:',e)}
 }
 
-function patchCounter(){
-  try{
-    const d=doc();if(!d||!d.body)return;
-    const walker=d.createTreeWalker(d.body,NodeFilter.SHOW_TEXT);
-    const nodes=[];let n;while(n=walker.nextNode())nodes.push(n);
-    let counterEl=null;
-    for(const node of nodes){
-      if(/SENAMHI:\s*\d+\s*(?:vigentes|actuales?)\s*[·•]\s*\d+\s*pasados?/i.test(node.nodeValue||'')){counterEl=node.parentElement;break}
-    }
-    if(!counterEl)return;
-    const currentBox=d.getElementById('officialAlerts');
-    const pastBox=d.getElementById('pastOfficialAlerts');
-    const countVisible=box=>box?Array.from(box.children).filter(x=>usefulText((x.textContent||'').trim())).length:0;
-    counterEl.textContent=`SENAMHI: ${countVisible(currentBox)} actuales · ${countVisible(pastBox)} pasados`;
-  }catch(e){console.warn('No se pudo actualizar el contador SENAMHI',e)}
+function stabilize(){
+ try{
+  const d=doc();if(!d||!d.body)return;
+  const rows=d.getElementById('rows'),ms=d.getElementById('measurements');
+  if(rows&&nonEmptyChildren(rows)){cachedMeasurements=rows.innerHTML;cachedMeasurementStatus=ms&&usefulText(ms.textContent||'')?ms.textContent:cachedMeasurementStatus;saveLocal('cap_measurements_html',cachedMeasurements);saveLocal('cap_measurements_status',cachedMeasurementStatus)}
+  else if(rows){cachedMeasurements=loadLocal('cap_measurements_html');cachedMeasurementStatus=loadLocal('cap_measurements_status');if(cachedMeasurements)rows.innerHTML=cachedMeasurements;if(ms&&cachedMeasurementStatus)ms.textContent=cachedMeasurementStatus}
+  const news=d.getElementById('news'),ns=d.getElementById('newsStatus');
+  if(news&&news.querySelector('.news-item')){cachedNews=news.innerHTML;cachedNewsStatus=ns&&usefulText(ns.textContent||'')?ns.textContent:cachedNewsStatus;saveLocal('cap_news_html',cachedNews);saveLocal('cap_news_status',cachedNewsStatus)}
+  else if(news){cachedNews=loadLocal('cap_news_html');cachedNewsStatus=loadLocal('cap_news_status');if(cachedNews)news.innerHTML=cachedNews;if(ns&&cachedNewsStatus)ns.textContent=cachedNewsStatus}
+  const current=d.getElementById('officialAlerts'),past=d.getElementById('pastOfficialAlerts'),system=d.getElementById('systemAlerts'),as=d.getElementById('alertsStatus');
+  if(current&&nonEmptyChildren(current)){cachedCurrentAlerts=current.innerHTML;saveLocal('cap_current_alerts',cachedCurrentAlerts)}else if(current){cachedCurrentAlerts=loadLocal('cap_current_alerts');if(cachedCurrentAlerts)current.innerHTML=cachedCurrentAlerts}
+  if(past&&nonEmptyChildren(past)){cachedPastAlerts=past.innerHTML;saveLocal('cap_past_alerts',cachedPastAlerts)}else if(past){cachedPastAlerts=loadLocal('cap_past_alerts');if(cachedPastAlerts)past.innerHTML=cachedPastAlerts}
+  if(system&&nonEmptyChildren(system)){cachedSystemAlerts=system.innerHTML;saveLocal('cap_system_alerts',cachedSystemAlerts)}else if(system){cachedSystemAlerts=loadLocal('cap_system_alerts');if(cachedSystemAlerts)system.innerHTML=cachedSystemAlerts}
+  if(as&&usefulText(as.textContent||'')){cachedAlertsStatus=as.textContent;saveLocal('cap_alerts_status',cachedAlertsStatus)}else if(as){cachedAlertsStatus=loadLocal('cap_alerts_status');if(cachedAlertsStatus)as.textContent=cachedAlertsStatus}
+ }catch(e){console.warn('Estabilidad:',e)}
 }
 
-function patchSeverityLabels(){
-  try{
-    const d=doc();if(!d||!d.body)return;
-    d.querySelectorAll('.badge').forEach(b=>{
-      if(!/^HIST[ÓO]RICO$/i.test((b.textContent||'').trim()))return;
-      const card=b.closest('.alert-card');if(!card)return;
-      const cls=card.classList;
-      b.textContent=cls.contains('critical')?'ROJO':cls.contains('high')?'NARANJA':cls.contains('medium')?'AMARILLO':(b.textContent||'').trim();
-    });
-  }catch(e){console.warn('No se pudo actualizar la gravedad SENAMHI',e)}
-}
-
-function tick(){stabilizeVisibleContent();patchCounter();patchSeverityLabels();syncCloudMeasurements()}
-
-frame.addEventListener('load',()=>{
-  tick();
-  setTimeout(tick,300);
-  setTimeout(tick,1000);
-  setTimeout(tick,2500);
-  setInterval(tick,3000);
-  try{
-    const d=doc();
-    if(d&&d.body){
-      const observer=new MutationObserver(()=>stabilizeVisibleContent());
-      observer.observe(d.body,{childList:true,subtree:true});
-    }
-  }catch(e){console.warn('No se pudo activar el observador de estabilidad:',e)}
-});
+function patchCounter(){try{const d=doc();if(!d||!d.body)return;const walker=d.createTreeWalker(d.body,NodeFilter.SHOW_TEXT);let n,c=null;while(n=walker.nextNode()){if(/SENAMHI:\s*\d+\s*(?:vigentes|actuales?)\s*[·•]\s*\d+\s*pasados?/i.test(n.nodeValue||'')){c=n.parentElement;break}}if(!c)return;const count=b=>b?Array.from(b.children).filter(x=>usefulText((x.textContent||'').trim())).length:0;c.textContent=`SENAMHI: ${count(d.getElementById('officialAlerts'))} actuales · ${count(d.getElementById('pastOfficialAlerts'))} pasados`}catch(e){}}
+function patchSeverity(){try{const d=doc();if(!d)return;d.querySelectorAll('.badge').forEach(b=>{const t=(b.textContent||'').trim().toUpperCase();if(t==='BAJO')b.classList.add('low')})}catch(e){}}
+function tick(){stabilize();patchVisuals();patchCounter();patchSeverity()}
+frame.addEventListener('load',()=>{tick();setTimeout(tick,300);setTimeout(tick,1000);setTimeout(tick,2500);setInterval(tick,3000);try{const d=doc();if(d&&d.body){new MutationObserver(tick).observe(d.body,{childList:true,subtree:true})}}catch(e){}});
 </script>
 </body>
 </html>
