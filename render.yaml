@@ -13,6 +13,18 @@ services:
         fromDatabase:
           name: climate-alert-platform-db
           property: connectionString
+      - key: KAFKA_BOOTSTRAP_SERVERS
+        sync: false
+      - key: KAFKA_USERNAME
+        sync: false
+      - key: KAFKA_PASSWORD
+        sync: false
+      - key: KAFKA_SECURITY_PROTOCOL
+        value: SASL_SSL
+      - key: KAFKA_SASL_MECHANISM
+        value: PLAIN
+      - key: KAFKA_ALERT_TOPIC
+        value: climate-alerts
 
   - type: cron
     name: climate-alert-platform-monitor
