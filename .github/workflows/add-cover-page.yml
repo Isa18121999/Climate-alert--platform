@@ -1,13 +1,15 @@
 name: Add cover page
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
   patch:
+    if: ${{ !contains(github.event.head_commit.message, 'Add project cover page') && !contains(github.event.head_commit.message, 'Remove one-time cover workflow') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,19 +23,16 @@ jobs:
           if 'id="projectCover"' in s:
               print('Cover already present')
               raise SystemExit(0)
-
           cover_css = '''\n.project-cover{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:24px;background:linear-gradient(180deg,rgba(0,0,0,.48),rgba(0,30,38,.68)),url("https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=2200&q=85") center/cover no-repeat;color:#fff;text-align:center}.project-cover-inner{max-width:900px}.project-cover h1{margin:0;font-size:clamp(34px,6vw,68px);line-height:1.05;letter-spacing:-1px;text-shadow:0 4px 22px rgba(0,0,0,.45)}.project-cover p{margin:18px auto 0;max-width:720px;font-size:clamp(14px,2vw,20px);line-height:1.5;color:rgba(255,255,255,.9)}.project-cover-badge{display:inline-flex;padding:8px 14px;border-radius:999px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);font-size:12px;font-weight:900;letter-spacing:.5px;margin-bottom:18px}.project-cover-actions{display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin-top:28px}.project-cover-btn{border:0;border-radius:14px;padding:13px 20px;font-weight:900;font-size:14px;cursor:pointer;background:#0a8fb0;color:#fff;box-shadow:0 10px 28px rgba(0,0,0,.25)}.project-cover-btn.secondary{background:rgba(255,255,255,.95);color:#15334b}.project-cover small{display:block;margin-top:22px;color:rgba(255,255,255,.72);font-size:11px}@media(max-width:600px){.project-cover{padding:18px}.project-cover h1{font-size:35px}.project-cover p{font-size:14px}}\n'''
           s = s.replace('</style>', cover_css + '</style>', 1)
-
           cover_html = '''\n<div id="projectCover" class="project-cover" role="dialog" aria-label="Portada del proyecto"><div class="project-cover-inner"><div class="project-cover-badge">🇵🇪 PERÚ · SISTEMA DE ALERTA TEMPRANA</div><h1>Plataforma de Alerta Temprana</h1><p>Monitoreo de lluvias extremas, inundaciones, desbordes, huaicos y otros eventos climáticos en el Perú.</p><div class="project-cover-actions"><button class="project-cover-btn" id="enterDashboard">Explorar plataforma</button><button class="project-cover-btn secondary" id="coverAlerts">Ver alertas</button></div><small>SENAMHI · noticias climáticas peruanas · mapa nacional de eventos</small></div></div>\n'''
           s = s.replace('<body>', '<body>' + cover_html, 1)
-
           cover_js = '''\n<script>\n(function(){const cover=document.getElementById('projectCover');const frame=document.getElementById('dashboardFrame');function enter(target){if(!cover)return;cover.style.opacity='0';cover.style.transition='opacity .35s ease';setTimeout(()=>{cover.remove();if(target)frame.contentWindow.postMessage({action:target},'*')},350)}document.getElementById('enterDashboard')?.addEventListener('click',()=>enter('dashboard'));document.getElementById('coverAlerts')?.addEventListener('click',()=>enter('alerts'));})();\n</script>\n'''
           s = s.replace('</body>', cover_js + '</body>', 1)
           p.write_text(s, encoding='utf-8')
           PY
 
-      - name: Commit and remove workflow
+      - name: Commit and remove one-time workflow
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
