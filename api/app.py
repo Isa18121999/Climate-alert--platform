@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from uuid import uuid4
 from urllib.parse import urlparse, urljoin
@@ -25,7 +26,6 @@ OPEN_METEO_FLOOD = os.getenv("OPEN_METEO_FLOOD", "https://flood-api.open-meteo.c
 DEFAULT_LAT = float(os.getenv("DEFAULT_LAT", "-5.1945"))
 DEFAULT_LON = float(os.getenv("DEFAULT_LON", "-80.6328"))
 DEFAULT_STATION_ID = os.getenv("DEFAULT_STATION_ID", "PIURA-DEMO")
-
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 
@@ -59,6 +59,7 @@ def _init_measurements_db():
 
 
 def _store_measurement(item: dict):
+    """Guarda la medición en PostgreSQL cuando DATABASE_URL está configurada."""
     conn = _db_connect()
     if conn is None:
         measurements.insert(0, item)
@@ -93,8 +94,7 @@ def _load_measurements(limit: int = 50) -> list[dict]:
                    FROM measurements ORDER BY timestamp DESC LIMIT %s""",
                 (limit,),
             )
-            rows = cur.fetchall()
-            return [dict(row) for row in rows]
+            return [dict(row) for row in cur.fetchall()]
     finally:
         conn.close()
 
@@ -103,14 +103,12 @@ measurements: list[dict] = []
 alerts: list[dict] = []
 official_alert_cache: list[dict] = []
 
-# Fuentes permitidas: únicamente medios peruanos y fuentes oficiales peruanas.
 PERU_MEDIA_DOMAINS = (
     "rpp.pe", "elcomercio.pe", "larepublica.pe", "andina.pe", "gestion.pe", "peru21.pe",
     "atv.pe", "tvperu.gob.pe", "canaln.pe", "americatv.com.pe", "senamhi.gob.pe", "web2.senamhi.gob.pe",
     "gob.pe", "indeci.gob.pe", "mtc.gob.pe", "cultura.gob.pe",
 )
 
-# Una noticia entra solamente si trata un fenómeno/alerta climático concreto.
 CLIMATE_TERMS = (
     "alerta", "aviso meteorológico", "aviso meteorologico", "lluvia", "lluvias", "precipit",
     "inund", "desborde", "huaico", "huayco", "tormenta", "crecida", "caudal", "quebrada",
@@ -120,7 +118,6 @@ CLIMATE_TERMS = (
     "hidrológ", "hidrolog", "precipitaciones intensas", "lluvias intensas", "lluvia extrema",
 )
 
-# Bloqueo explícito de contenido que no pertenece a Climate Alert.
 GENERIC_TERMS = (
     "horóscopo", "horoscopo", "deportes", "entretenimiento", "farándula", "farandula", "informativa",
     "elecciones", "votación", "votacion", "partido", "fútbol", "futbol", "congreso", "candidato",
@@ -180,20 +177,10 @@ def _add_article(articles: list[dict], seen: set[str], title: str, link: str, so
         return
     seen.add(key)
     articles.append({
-        "title": title,
-        "url": link,
-        "domain": source_label,
-        "source": source_label,
-        "language": "es",
-        "seendate": pub_date,
-        "published_at": pub_date,
-        "description": description,
-        "summary": description[:500],
-        "socialimage": None,
-        "country": "PE",
-        "region": "Perú",
-        "category": "Clima",
-        "severity": severity,
+        "title": title, "url": link, "domain": source_label, "source": source_label,
+        "language": "es", "seendate": pub_date, "published_at": pub_date,
+        "description": description, "summary": description[:500], "socialimage": None,
+        "country": "PE", "region": "Perú", "category": "Clima", "severity": severity,
     })
 
 
@@ -202,34 +189,24 @@ def _parse_tolerant_feed(content: bytes, source_label: str, articles: list[dict]
         root = ET.fromstring(content)
         items = root.findall(".//item")
         for item in items:
-            _add_article(
-                articles, seen,
-                item.findtext("title") or "",
-                item.findtext("link") or "",
-                source_label,
-                item.findtext("description") or "",
-                item.findtext("pubDate"),
-                " ".join(x.text or "" for x in item.findall("category")),
-            )
+            _add_article(articles, seen, item.findtext("title") or "", item.findtext("link") or "", source_label,
+                         item.findtext("description") or "", item.findtext("pubDate"),
+                         " ".join(x.text or "" for x in item.findall("category")))
         return
     except ET.ParseError:
         pass
-
     soup = BeautifulSoup(content, "xml")
     for item in soup.find_all("item"):
-        _add_article(
-            articles, seen,
-            item.find("title").get_text(" ", strip=True) if item.find("title") else "",
-            item.find("link").get_text(" ", strip=True) if item.find("link") else "",
-            source_label,
-            item.find("description").get_text(" ", strip=True) if item.find("description") else "",
-            item.find("pubDate").get_text(" ", strip=True) if item.find("pubDate") else None,
-            " ".join(x.get_text(" ", strip=True) for x in item.find_all("category")),
-        )
+        _add_article(articles, seen,
+                     item.find("title").get_text(" ", strip=True) if item.find("title") else "",
+                     item.find("link").get_text(" ", strip=True) if item.find("link") else "",
+                     source_label,
+                     item.find("description").get_text(" ", strip=True) if item.find("description") else "",
+                     item.find("pubDate").get_text(" ", strip=True) if item.find("pubDate") else None,
+                     " ".join(x.get_text(" ", strip=True) for x in item.find_all("category")))
 
 
-def _parse_source_page(content: bytes, page_url: str, source_label: str,
-                       articles: list[dict], seen: set[str]) -> None:
+def _parse_source_page(content: bytes, page_url: str, source_label: str, articles: list[dict], seen: set[str]) -> None:
     soup = BeautifulSoup(content, "html.parser")
     for anchor in soup.find_all("a", href=True):
         title = anchor.get_text(" ", strip=True)
@@ -239,7 +216,7 @@ def _parse_source_page(content: bytes, page_url: str, source_label: str,
             break
 
 
-def _fetch(url: str, timeout: int = 6) -> bytes:
+def _fetch(url: str, timeout: int = 8) -> bytes:
     r = requests.get(url, timeout=timeout, headers={
         "User-Agent": "ClimateAlertPlatform/1.0 (+academic-project)",
         "Accept-Language": "es-PE,es;q=0.9",
@@ -248,12 +225,21 @@ def _fetch(url: str, timeout: int = 6) -> bytes:
     return r.content
 
 
+def _fetch_news_source(source):
+    source_label, feed_or_page, fallback_page = source
+    try:
+        content = _fetch(feed_or_page)
+        return source_label, feed_or_page, fallback_page, content, None
+    except Exception as exc:
+        return source_label, feed_or_page, fallback_page, None, exc
+
+
 def peruvian_climate_rss_news() -> list[dict]:
-    # Fuentes periodísticas peruanas + páginas oficiales de SENAMHI.
+    # Se consultan las fuentes en paralelo para que una fuente lenta no bloquee toda la sección.
     sources = [
         ("SENAMHI", "https://www.senamhi.gob.pe/?p=prediccion", None),
         ("SENAMHI", "https://www.senamhi.gob.pe/?p=fenomeno-el-nino", None),
-        ("SENAMHI Avisos", "https://www.senamhi.gob.pe/?p=avisos", None),
+        ("SENAMHI Avisos", "https://www.senamhi.gob.pe/?p=avisos", "https://www.senamhi.gob.pe/?p=aviso-meteorologico"),
         ("RPP", "https://rpp.pe/rss-titulares.xml", "https://rpp.pe/fenomenoelnino"),
         ("El Comercio", "https://elcomercio.pe/arc/outboundfeeds/rss/category/peru/?outputType=xml", "https://elcomercio.pe/noticias/senamhi/"),
         ("El Comercio Lima", "https://elcomercio.pe/arc/outboundfeeds/rss/category/lima/?outputType=xml", "https://elcomercio.pe/noticias/senamhi/"),
@@ -261,25 +247,28 @@ def peruvian_climate_rss_news() -> list[dict]:
     articles: list[dict] = []
     seen: set[str] = set()
 
-    for source_label, feed_or_page, fallback_page in sources:
-        try:
-            content = _fetch(feed_or_page)
-            if feed_or_page.endswith(".xml"):
-                _parse_tolerant_feed(content, source_label, articles, seen)
-            else:
-                _parse_source_page(content, feed_or_page, source_label, articles, seen)
-        except Exception as exc:
-            print(f"NEWS {source_label} {feed_or_page}: {exc}")
+    with ThreadPoolExecutor(max_workers=len(sources)) as executor:
+        futures = [executor.submit(_fetch_news_source, source) for source in sources]
+        for future in as_completed(futures):
+            source_label, feed_or_page, fallback_page, content, error = future.result()
+            if content is not None:
+                try:
+                    if feed_or_page.endswith(".xml"):
+                        _parse_tolerant_feed(content, source_label, articles, seen)
+                    else:
+                        _parse_source_page(content, feed_or_page, source_label, articles, seen)
+                except Exception as exc:
+                    print(f"NEWS PARSE {source_label} {feed_or_page}: {exc}")
+            elif error:
+                print(f"NEWS {source_label} {feed_or_page}: {error}")
 
-        if fallback_page and len(articles) < 10:
-            try:
-                content = _fetch(fallback_page)
-                _parse_source_page(content, fallback_page, source_label, articles, seen)
-            except Exception as exc:
-                print(f"NEWS FALLBACK {source_label}: {exc}")
-
-        if len(articles) >= 40:
-            break
+            # Los respaldos también se consultan solo cuando la fuente principal falló o no aportó noticias.
+            if fallback_page and len(articles) < 10:
+                try:
+                    fallback_content = _fetch(fallback_page)
+                    _parse_source_page(fallback_content, fallback_page, source_label, articles, seen)
+                except Exception as exc:
+                    print(f"NEWS FALLBACK {source_label}: {exc}")
 
     def sort_key(item: dict):
         value = item.get("published_at") or item.get("seendate") or ""
@@ -379,21 +368,39 @@ def monitor():
 
 @app.post("/measurements")
 def create_measurement():
-    data = request.get_json(force=True); station_id = str(data.get("station_id", "WEB-001")); rain_mm_h = float(data["rain_mm_h"]); river_level_m = float(data["river_level_m"]); level, reasons = risk(rain_mm_h, river_level_m)
-    item = {"id": str(uuid4()), "station_id": station_id, "timestamp": data.get("timestamp", datetime.now(timezone.utc).isoformat()), "rain_mm_h": rain_mm_h, "river_level_m": river_level_m, "risk_level": level, "risk_reasons": reasons, "location": data.get("location", {})}; measurements.insert(0, item)
-    if level in {"ALTO", "CRITICO"}: alerts.insert(0, {"id": str(uuid4()), "station_id": station_id, "timestamp": item["timestamp"], "level": level, "alert_type": "RIESGO_CALCULADO", "official": False, "source": "Climate Alert Platform", "message": f"Riesgo {level}: {', '.join(reasons)}"})
+    data = request.get_json(force=True)
+    station_id = str(data.get("station_id", "WEB-001"))
+    rain_mm_h = float(data["rain_mm_h"])
+    river_level_m = float(data["river_level_m"])
+    level, reasons = risk(rain_mm_h, river_level_m)
+    item = {
+        "id": str(uuid4()),
+        "station_id": station_id,
+        "timestamp": data.get("timestamp", datetime.now(timezone.utc).isoformat()),
+        "rain_mm_h": rain_mm_h,
+        "river_level_m": river_level_m,
+        "risk_level": level,
+        "risk_reasons": reasons,
+        "location": data.get("location", {}),
+    }
+    # Antes se insertaba solo en memoria y por eso Render mostraba 0 mediciones tras reiniciar.
+    _store_measurement(item)
+    if level in {"ALTO", "CRITICO"}:
+        alerts.insert(0, {"id": str(uuid4()), "station_id": station_id, "timestamp": item["timestamp"], "level": level, "alert_type": "RIESGO_CALCULADO", "official": False, "source": "Climate Alert Platform", "message": f"Riesgo {level}: {', '.join(reasons)}"})
     return jsonify({"measurement": item}), 201
 
 
 @app.get("/measurements")
-def list_measurements(): return jsonify({"items": _load_measurements(50)})
+def list_measurements():
+    return jsonify({"items": _load_measurements(50)})
 
 
 _init_measurements_db()
 
 
 @app.get("/alerts")
-def list_alerts(): return jsonify({"items": alerts[:50]})
+def list_alerts():
+    return jsonify({"items": alerts[:50]})
 
 
 if __name__ == "__main__":
