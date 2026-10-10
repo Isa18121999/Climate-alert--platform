@@ -8,11 +8,12 @@ from typing import Any
 import requests
 from bs4 import BeautifulSoup
 
-# SENAMHI publica los avisos meteorológicos desde su portal oficial.
-# No se almacenan avisos escritos manualmente en el proyecto.
-SENAMHI_ALERTS_URL = "https://www.senamhi.gob.pe/main.php?dp=lima&p=avisos-meteorologicos"
-SENAMHI_ALERTS_FALLBACK_URL = "https://web2.senamhi.gob.pe/?p=avisos"
+# Avisos obtenidos exclusivamente desde páginas oficiales de SENAMHI.
+SENAMHI_ALERTS_URL = "https://www.senamhi.gob.pe/?p=aviso-meteorologico"
+SENAMHI_ALERTS_FALLBACK_URL = "https://www.senamhi.gob.pe/main.php?dp=lima&p=avisos-meteorologicos"
+SENAMHI_ALERTS_FALLBACK_2_URL = "https://web2.senamhi.gob.pe/?p=avisos"
 SENAMHI_SHORT_TERM_RAIN_URL = "https://www.senamhi.gob.pe/servicios/?p=aviso-24H"
+SENAMHI_SHORT_TERM_RAIN_FALLBACK_URL = "https://www.senamhi.gob.pe/servicios/main.php?dp=lima&p=aviso-24H"
 MONTHS_ES = {"ene":1,"enero":1,"feb":2,"febrero":2,"mar":3,"marzo":3,"abr":4,"abril":4,"may":5,"mayo":5,"jun":6,"junio":6,"jul":7,"julio":7,"ago":8,"agosto":8,"sep":9,"sept":9,"septiembre":9,"oct":10,"octubre":10,"nov":11,"noviembre":11,"dic":12,"diciembre":12}
 
 
@@ -50,7 +51,7 @@ def _status(alert: dict[str, Any], now: datetime) -> str:
 
 
 def _get_html(url: str) -> str:
-    response = requests.get(url, timeout=8, headers={"User-Agent":"ClimateAlertPlatform/1.0 (+academic-project)","Accept-Language":"es-PE,es;q=0.9"})
+    response = requests.get(url, timeout=10, headers={"User-Agent":"ClimateAlertPlatform/1.0 (+academic-project)","Accept-Language":"es-PE,es;q=0.9"})
     response.raise_for_status()
     response.encoding = response.apparent_encoding or response.encoding
     return response.text
@@ -82,6 +83,7 @@ def _parse_national_tables(html: str, source_url: str) -> list[dict]:
         ia, inn, il = _column(header,"aviso"), _column(header,"nro","numero","número"), _column(header,"nivel")
         ie, ii = _column(header,"emision","emisión"), _column(header,"inicio")
         ifn, idu = _column(header,"fin","termino","término"), _column(header,"duracion","duración")
+        ir = _column(header,"departamento","departamentos","region","región","regiones","zona","zonas")
         if ia is None or il is None: continue
         for cells in rows[1:]:
             def get(idx): return cells[idx].strip() if idx is not None and idx < len(cells) else ""
@@ -89,32 +91,41 @@ def _parse_national_tables(html: str, source_url: str) -> list[dict]:
             if not title or _norm(title) in ("aviso","avisos"): continue
             number, level = get(inn), get(il).upper()
             clean_number = re.sub(r"\s*\(.*?\)", "", number).strip()
-            results.append({"id":f"senamhi-{clean_number or re.sub(r'[^a-z0-9]+','-',title.lower())[:50]}","source":"SENAMHI","official":True,"type":"AVISO_METEOROLOGICO","title":title,"number":clean_number or number,"issued_at":get(ie),"start_at":get(ii),"end_at":get(ifn),"duration":get(idu),"level":level or "INFORMACION","url":source_url})
+            region = get(ir)
+            results.append({"id":f"senamhi-{clean_number or re.sub(r'[^a-z0-9]+','-',title.lower())[:50]}","source":"SENAMHI","official":True,"type":"AVISO_METEOROLOGICO","title":title,"number":clean_number or number,"issued_at":get(ie),"start_at":get(ii),"end_at":get(ifn),"duration":get(idu),"level":level or "INFORMACION","region":region or "Perú","url":source_url})
     return results
 
 
-def _parse_short_term_rain(html: str) -> list[dict]:
+def _parse_short_term_rain(html: str, source_url: str) -> list[dict]:
     soup = BeautifulSoup(html, "html.parser")
     text = soup.get_text(" ", strip=True)
-    match = re.search(r"N[°º]\s*(\d+)\s*-\s*(\d{4}).{0,1200}?NIVEL\s+(AMARILLO|NARANJA|ROJO|VERDE)", text, re.I)
+    match = re.search(r"N[°º]\s*(\d+)\s*-\s*(\d{4}).{0,1600}?NIVEL\s+(AMARILLO|NARANJA|ROJO|VERDE)", text, re.I)
     if not match: return []
     number, year, level = match.groups()
     start_match = re.search(r"Fecha de inicio:\s*(.*?)(?:\s+Duración:|\s+Plazo:|$)", text, re.I)
     start_value = start_match.group(1).strip() if start_match else ""
-    return [{"id":f"senamhi-rain-{year}-{number}","source":"SENAMHI","official":True,"type":"AVISO_CORTO_PLAZO_LLUVIA","title":"AVISO DE CORTO PLAZO ANTE LLUVIAS INTENSAS","number":number,"issued_at":"","start_at":start_value,"end_at":"","duration":"24 horas","level":level.upper(),"url":SENAMHI_SHORT_TERM_RAIN_URL}]
+    return [{"id":f"senamhi-rain-{year}-{number}","source":"SENAMHI","official":True,"type":"AVISO_CORTO_PLAZO_LLUVIA","title":"AVISO DE CORTO PLAZO ANTE LLUVIAS INTENSAS","number":number,"issued_at":"","start_at":start_value,"end_at":"","duration":"24 horas","level":level.upper(),"region":"Perú","url":source_url}]
 
 
 def senamhi_alerts() -> dict:
     alerts, errors = [], []
-    national_sources = [("national", SENAMHI_ALERTS_URL), ("national_fallback", SENAMHI_ALERTS_FALLBACK_URL)]
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        futures = {executor.submit(_get_html, url):(label,url) for label,url in national_sources + [("short_term_rain",SENAMHI_SHORT_TERM_RAIN_URL)]}
+    sources = [
+        ("national", SENAMHI_ALERTS_URL),
+        ("national_fallback", SENAMHI_ALERTS_FALLBACK_URL),
+        ("national_fallback_2", SENAMHI_ALERTS_FALLBACK_2_URL),
+        ("short_term_rain", SENAMHI_SHORT_TERM_RAIN_URL),
+        ("short_term_rain_fallback", SENAMHI_SHORT_TERM_RAIN_FALLBACK_URL),
+    ]
+    with ThreadPoolExecutor(max_workers=len(sources)) as executor:
+        futures = {executor.submit(_get_html, url):(label,url) for label,url in sources}
         for future in as_completed(futures):
             label, url = futures[future]
             try:
                 html = future.result()
-                if label == "short_term_rain": alerts.extend(_parse_short_term_rain(html))
-                else: alerts.extend(_parse_national_tables(html, url))
+                if label.startswith("short_term_rain"):
+                    alerts.extend(_parse_short_term_rain(html, url))
+                else:
+                    alerts.extend(_parse_national_tables(html, url))
             except Exception as exc:
                 errors.append(f"{label}: {exc}")
 
