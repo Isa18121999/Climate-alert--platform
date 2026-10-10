@@ -141,6 +141,23 @@ def _is_climate_article(title: str, description: str = "", category: str = "") -
     return any(term in text for term in CLIMATE_TERMS) and not any(term in text for term in GENERIC_TERMS)
 
 
+def _rss_image(item: ET.Element, description: str = "") -> str | None:
+    """Extract the real image URL from RSS/Media RSS, with HTML fallback."""
+    for child in item.iter():
+        tag = child.tag.split("}")[-1].lower() if isinstance(child.tag, str) else ""
+        if tag in {"content", "thumbnail", "image", "enclosure"}:
+            url = (child.attrib.get("url") or child.attrib.get("href") or "").strip()
+            if url.startswith(("https://", "http://")):
+                return url
+    if description:
+        img = BeautifulSoup(description, "html.parser").find("img", src=True)
+        if img:
+            url = str(img.get("src") or "").strip()
+            if url.startswith(("https://", "http://")):
+                return url
+    return None
+
+
 def _news_severity(title: str, description: str = "") -> str:
     text = f"{title} {description}".lower()
     if any(term in text for term in (
@@ -161,7 +178,7 @@ def _news_severity(title: str, description: str = "") -> str:
 
 
 def _add_article(articles: list[dict], seen: set[str], title: str, link: str, source_label: str,
-                 description: str = "", pub_date: str | None = None, category: str = "") -> None:
+                 description: str = "", pub_date: str | None = None, category: str = "", image_url: str | None = None) -> None:
     title = BeautifulSoup(title or "", "html.parser").get_text(" ", strip=True)
     description = BeautifulSoup(description or "", "html.parser").get_text(" ", strip=True)
     link = link.strip()
@@ -179,7 +196,7 @@ def _add_article(articles: list[dict], seen: set[str], title: str, link: str, so
     articles.append({
         "title": title, "url": link, "domain": source_label, "source": source_label,
         "language": "es", "seendate": pub_date, "published_at": pub_date,
-        "description": description, "summary": description[:500], "socialimage": None,
+        "description": description, "summary": description[:500], "socialimage": image_url, "image_url": image_url,
         "country": "PE", "region": "Perú", "category": "Clima", "severity": severity,
     })
 
@@ -191,7 +208,8 @@ def _parse_tolerant_feed(content: bytes, source_label: str, articles: list[dict]
         for item in items:
             _add_article(articles, seen, item.findtext("title") or "", item.findtext("link") or "", source_label,
                          item.findtext("description") or "", item.findtext("pubDate"),
-                         " ".join(x.text or "" for x in item.findall("category")))
+                         " ".join(x.text or "" for x in item.findall("category")),
+                         _rss_image(item, item.findtext("description") or ""))
         return
     except ET.ParseError:
         pass
@@ -203,7 +221,8 @@ def _parse_tolerant_feed(content: bytes, source_label: str, articles: list[dict]
                      source_label,
                      item.find("description").get_text(" ", strip=True) if item.find("description") else "",
                      item.find("pubDate").get_text(" ", strip=True) if item.find("pubDate") else None,
-                     " ".join(x.get_text(" ", strip=True) for x in item.find_all("category")))
+                     " ".join(x.get_text(" ", strip=True) for x in item.find_all("category")),
+                     _rss_image(item, item.find("description").decode_contents() if item.find("description") else ""))
 
 
 def _parse_source_page(content: bytes, page_url: str, source_label: str, articles: list[dict], seen: set[str]) -> None:
