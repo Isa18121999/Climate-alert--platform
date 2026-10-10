@@ -1,0 +1,116 @@
+name: Fix dashboard data flicker
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Stabilize dashboard data rendering
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('dashboard/index-original.html')
+          text = path.read_text(encoding='utf-8')
+
+          # 1) Mantener las mediciones que ya se mostraron si una consulta posterior
+          #    devuelve cero registros o falla temporalmente.
+          marker = "async function loadAWS(){"
+          helper = r'''
+let lastGoodCloudMeasurements=[];
+function renderCloudMeasurements(items){
+  const status=$('measurements'),rows=$('rows');
+  if(!status||!rows)return;
+  const clean=Array.isArray(items)?items:[];
+  if(clean.length) lastGoodCloudMeasurements=clean.slice(0,50);
+  const visible=clean.length?clean:lastGoodCloudMeasurements;
+  if(!visible.length){
+    if(!rows.children.length) status.textContent='Aún no hay mediciones registradas.';
+    return;
+  }
+  status.textContent=visible.length+' mediciones registradas.';
+  rows.innerHTML=visible.slice(0,10).map(x=>'<tr><td>'+(x.station_id||'—')+'</td><td>'+((x.rain_mm_h??'—'))+'</td><td>'+((x.river_level_m??'—'))+'</td><td>'+riskBadge(x.risk_level||'—')+'</td></tr>').join('');
+}
+
+'''
+          if helper.strip() not in text:
+              if marker not in text:
+                  raise SystemExit('No se encontró loadAWS')
+              text=text.replace(marker, helper+marker, 1)
+
+          # Reemplaza el bloque que actualmente borra las filas cuando items=[].
+          pattern = re.compile(r"\n    if\(items\.length\)\{.*?\n    \}\n\n    let a=aRes\.status", re.S)
+          replacement = r'''
+    // Si AWS devuelve vacío, consultar Render antes de considerar que no hay datos.
+    if(!items.length){
+      try{
+        const backupMeasurements=await q('https://climate-alert-platform-api.onrender.com/measurements',8000);
+        if(Array.isArray(backupMeasurements.items)&&backupMeasurements.items.length){
+          items=backupMeasurements.items;
+        }
+      }catch(e){
+        console.warn('Mediciones Render:',e);
+      }
+    }
+    renderCloudMeasurements(items);
+
+    let a=aRes.status'''
+          text,n=pattern.subn(replacement,text,count=1)
+          if n!=1:
+              raise SystemExit('No se encontró el bloque de mediciones de loadAWS')
+
+          # El backend puede responder correctamente pero con una lista temporalmente vacía.
+          # En ese caso no borrar las noticias ya visibles.
+          old="""  if(lastNewsArticles.length){
+    renderNewsArticles(lastNewsArticles);
+  }else{
+    $('newsCount').textContent='0';
+    $('news').innerHTML='<div class=\"empty\">No se pudieron cargar las noticias en este momento.</div>';
+    if($('newsStatus')) $('newsStatus').textContent='🟡 Reintentando noticias…';
+  }"""
+          new="""  if(lastNewsArticles.length){
+    renderNewsArticles(lastNewsArticles);
+  }else if(!$('news').querySelector('.news-item')){
+    $('newsCount').textContent='0';
+    $('news').innerHTML='<div class=\"empty\">No se pudieron cargar las noticias en este momento.</div>';
+    if($('newsStatus')) $('newsStatus').textContent='🟡 Reintentando noticias…';
+  }"""
+          if old in text:
+              text=text.replace(old,new,1)
+
+          # No presentar Render como AWS en la interfaz.
+          text=text.replace(
+              "$('backend').textContent='Backend conectado: '+provider+' · AWS API Gateway + Lambda + DynamoDB + SNS.';",
+              "$('backend').textContent='Backend conectado: '+provider+' · API y almacenamiento en Render.';"
+          )
+
+          # Evitar que una actualización automática vuelva a mostrar un estado de carga
+          # mientras los datos anteriores siguen disponibles.
+          text=text.replace(
+              "$('status').textContent='Consultando datos…';",
+              "if(!$('temp').textContent || $('temp').textContent==='—') $('status').textContent='Consultando datos…';"
+          )
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Commit changes and remove temporary workflow
+        run: |
+          rm -f .github/workflows/fix-dashboard-flicker.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dashboard/index-original.html .github/workflows/fix-dashboard-flicker.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "Prevent dashboard data from disappearing"
+          git push
