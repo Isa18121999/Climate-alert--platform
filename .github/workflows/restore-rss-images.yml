@@ -20,9 +20,8 @@ jobs:
           p = Path('api/app.py')
           s = p.read_text(encoding='utf-8')
           if 'def _rss_image(' not in s:
-              s = s.replace('import os\n', 'import html\nimport os\nimport re\n', 1)
               marker = 'def _news_severity(title: str, description: str = "") -> str:\n'
-              helper = '''def _rss_image(item: ET.Element, description: str = "") -> str | None:\n    """Extract the real image URL from RSS/Media RSS, with HTML fallback."""\n    for child in item.iter():\n        tag = child.tag.split("}")[-1].lower() if isinstance(child.tag, str) else ""\n        if tag in {"content", "thumbnail", "image", "enclosure"}:\n            url = (child.attrib.get("url") or child.attrib.get("href") or "").strip()\n            if url.startswith(("https://", "http://")):\n                return html.unescape(url)\n    match = re.search(r'<img[^>]+src=["\\\\'](https?://[^"\\\\']+)["\\\\']', description or "", re.I)\n    return html.unescape(match.group(1)) if match else None\n\n\n'''
+              helper = '''def _rss_image(item: ET.Element, description: str = "") -> str | None:\n    """Extract the real image URL from RSS/Media RSS, with HTML fallback."""\n    for child in item.iter():\n        tag = child.tag.split("}")[-1].lower() if isinstance(child.tag, str) else ""\n        if tag in {"content", "thumbnail", "image", "enclosure"}:\n            url = (child.attrib.get("url") or child.attrib.get("href") or "").strip()\n            if url.startswith(("https://", "http://")):\n                return url\n    if description:\n        img = BeautifulSoup(description, "html.parser").find("img", src=True)\n        if img:\n            url = str(img.get("src") or "").strip()\n            if url.startswith(("https://", "http://")):\n                return url\n    return None\n\n\n'''
               s = s.replace(marker, helper + marker, 1)
           s = s.replace('description: str = "", pub_date: str | None = None, category: str = "") -> None:', 'description: str = "", pub_date: str | None = None, category: str = "", image_url: str | None = None) -> None:', 1)
           s = s.replace('"description": description, "summary": description[:500], "socialimage": None,\n        "country":', '"description": description, "summary": description[:500], "socialimage": image_url, "image_url": image_url,\n        "country":', 1)
@@ -35,7 +34,6 @@ jobs:
           p.write_text(s, encoding='utf-8')
           PY
           python -m py_compile api/app.py
-          git diff -- api/app.py
       - name: Commit and remove one-time workflow
         run: |
           git config user.name "github-actions[bot]"
